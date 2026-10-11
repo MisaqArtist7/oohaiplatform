@@ -227,7 +227,7 @@ return (
             type="submit"
             disabled={!isValid || isSubmitting}
             aria-busy={isSubmitting}
-            className="w-full mt-2 bg-primary enabled:hover:bg-primary/90 text-primary-foreground font-medium py-3.5 px-4 rounded-xl transition-all duration-200 shadow-md enabled:active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
+            className="w-full cursor-pointer mt-2 bg-primary enabled:hover:bg-primary/90 text-primary-foreground font-medium py-3.5 px-4 rounded-xl transition-all duration-200 shadow-md enabled:active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
         >
             {isSubmitting ? "در حال ثبت‌نام..." : "تأیید و ثبت‌نام"}
         </button>

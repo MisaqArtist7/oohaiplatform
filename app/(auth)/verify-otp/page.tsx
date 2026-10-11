@@ -279,7 +279,7 @@ return (
             type="button"
             onClick={handleResendOtp}
             disabled={isResending || isSubmitting}
-            className="mt-2 text-sm font-medium text-primary hover:opacity-80 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+            className="mt-2 cursor-pointer text-sm font-medium text-primary hover:opacity-80 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
         >
             {isResending ? "در حال ارسال..." : "ارسال مجدد کد"}
         </button>

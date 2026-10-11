@@ -185,7 +185,7 @@
             <button
                 type="submit"
                 disabled={!isValid || isSubmitting}
-                className="w-full bg-primary enabled:hover:bg-primary/90 text-primary-foreground font-medium py-3.5 px-4 rounded-xl transition-all duration-200 shadow-md enabled:active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
+                className="w-full cursor-pointer bg-primary enabled:hover:bg-primary/90 text-primary-foreground font-medium py-3.5 px-4 rounded-xl transition-all duration-200 shadow-md enabled:active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
             >
                 {isSubmitting ? "در حال ارسال..." : "ارسال کد تأیید"}
             </button>
