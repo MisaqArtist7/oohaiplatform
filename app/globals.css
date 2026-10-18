@@ -32,7 +32,4 @@
   --color-danger: var(--danger);
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-}
+
