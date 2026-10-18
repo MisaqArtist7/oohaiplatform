@@ -1,260 +1,414 @@
-"use client";
-
+// app/(public)/page.tsx
 import Link from "next/link";
-import { useState, useEffect } from "react";
-
-const features = [
-    {
-        number: "01",
-        title: "مکان‌یابی هوشمند",
-        description:
-        "مشاهده تمامی بیلبوردها و فضاهای تبلیغاتی روی نقشه تعاملی با اطلاعات دقیق ترافیکی و جمعیتی.",
-    },
-    {
-        number: "02",
-        title: "رزرو و مدیریت یکپارچه",
-        description:
-        "بدون نیاز به نامه‌نگاری‌های پیچیده اداری، کمپین‌های تبلیغاتی خود را مستقیماً از پنل مدیریت رزرو و زمان‌بندی کنید.",
-    },
-    {
-        number: "03",
-        title: "گزارش‌گیری سازمانی",
-        description:
-        "دسترسی به داشبوردهای تحلیلی دقیق برای بررسی میزان بازدید و بازخورد تبلیغات محیطی شما.",
-    },
-];
-
-// کلمات تایتل همراه با استایل و تنظیمات خط جدید
-const titleWords = [
-{ text: "سلطه", style: "text-slate-900" },
-{ text: "بر", style: "text-slate-900" },
-{ text: "نمای", style: "text-slate-900" },
-{ text: "شهر؛", style: "text-slate-900", breakLine: true },
-{ text: "هوشمندانه‌تر", style: "text-slate-500" },
-{ text: "از", style: "text-slate-500" },
-{ text: "همیشه.", style: "text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600" },
-];
+import {
+  Search,
+  MapPin,
+  Sparkles,
+  CheckCircle2,
+  ArrowLeft,
+  MonitorPlay,
+  Layers,
+  Navigation,
+  ShieldCheck,
+  Clock,
+  PhoneCall,
+  Building,
+  TrendingUp,
+} from "lucide-react";
 
 export default function HomePage() {
-const [visibleWords, setVisibleWords] = useState(0);
+  // دسته‌بندی انواع سازه طبق صفحه ۲ داکیومنت
+  const structureTypes = [
+    { title: "بیلبوردهای بزرگراهی", count: "۴۲۰ سازه", icon: Layers },
+    { title: "پل‌های عابر پیاده", count: "۱۸۵ سازه", icon: Navigation },
+    { title: "استرابوردهای شهری", count: "۳۱۰ سازه", icon: Building },
+    { title: "تلویزیون شهری دیجیتال", count: "۶۵ سازه", icon: MonitorPlay },
+    { title: "لایت‌باکس‌های مترو و معابر", count: "۵۴۰ سازه", icon: Sparkles },
+  ];
 
-useEffect(() => {
-    // تایمر برای نمایش کلمات (۸۰۰ میلی‌ثانیه برای تجربه کاربری بهتر در نظر گرفته شده، می‌توانید به 1000 تغییر دهید)
-    if (visibleWords < titleWords.length) {
-    const timer = setTimeout(() => {
-        setVisibleWords((prev) => prev + 1);
-    }, 369); 
-    return () => clearTimeout(timer);
-    }
-}, [visibleWords]);
+  // مناطق هدف طبق صفحه ۲ داکیومنت
+  const targetZones = [
+    "شاهراه‌ها و اتوبان‌ها",
+    "مناطق پرتردد تجاری",
+    "محدوده دانشگاه‌ها",
+    "مراکز خرید و مال‌ها",
+    "مناطق لوکس و شمال شهر",
+  ];
 
-return (
-    <main
-    dir="rtl"
-    className="min-h-screen overflow-hidden bg-slate-50 text-slate-900 font-sans"
-    >
-    {/* Navigation */}
-    <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/80 backdrop-blur-md shadow-sm">
-        <nav className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 lg:px-8">
-        <Link href="/" className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-900 text-lg font-bold text-white shadow-md">
-            O
-            </div>
-            <span className="text-2xl font-black tracking-tight text-slate-900">
-            Ooha<span className="text-amber-500">.</span>
-            </span>
-        </Link>
+  // نمونه سازه‌های ویژه (موک دیتا برای نمایش اولیه)
+  const featuredStructures = [
+    {
+      id: 1,
+      title: "بیلبورد اتوبان همت - غرب به شرق (قبل از خروجی چمران)",
+      city: "تهران",
+      type: "بیلبورد",
+      dimensions: "۱۵ × ۵ متر",
+      audience: "کارمندان، مدیران و تردد روزانه بالا",
+      price: "۱۸۵,۰۰۰,۰۰۰",
+      status: "available", // آماده رزرو
+    },
+    {
+      id: 2,
+      title: "تلویزیون شهری میدان ولیعصر (دید مستقیم چهارراه)",
+      city: "تهران",
+      type: "تلویزیون دیجیتال",
+      dimensions: "۱۲ × ۶ متر",
+      audience: "دانشجویان، جوانان و عابران پیاده",
+      price: "۲۴۰,۰۰۰,۰۰۰",
+      status: "locked", // قفل ۴۸ ساعته
+    },
+    {
+      id: 3,
+      title: "عرشه پل عابر پیاده بلوار اندرزگو",
+      city: "تهران",
+      type: "پل عابر",
+      dimensions: "۲۰ × ۲.۵ متر",
+      audience: "مخاطبان لوکس و قدرت خرید بالا",
+      price: "۳۱۰,۰۰۰,۰۰۰",
+      status: "available",
+    },
+  ];
 
-        <div className="hidden items-center gap-8 md:flex">
-            <Link href="#features" className="text-sm font-medium text-slate-600 transition-colors hover:text-slate-900">
-            امکانات پنل
-            </Link>
-            <Link href="#about" className="text-sm font-medium text-slate-600 transition-colors hover:text-slate-900">
-            خدمات سازمانی
-            </Link>
-            <Link href="#start" className="text-sm font-medium text-slate-600 transition-colors hover:text-slate-900">
-            تعرفه‌ها
-            </Link>
-        </div>
-
-        <div className="flex items-center gap-4">
-            <Link href="/login" className="hidden text-sm font-medium text-slate-600 hover:text-slate-900 md:block">
-            ورود همکاران
-            </Link>
-            <Link href="/register" className="inline-flex items-center justify-center rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-medium text-white transition-all hover:bg-slate-800 shadow-md active:scale-[0.98]">
-            پورتال مشتریان
-            <span className="mr-2" aria-hidden="true">←</span>
-            </Link>
-        </div>
-        </nav>
-    </header>
-
-    {/* Hero Section */}
-    <section className="relative overflow-hidden bg-white">
-        <div
-        className="absolute inset-0 opacity-[0.03] pointer-events-none"
-        style={{
-            backgroundImage: "linear-gradient(#0f172a 1px, transparent 1px), linear-gradient(90deg, #0f172a 1px, transparent 1px)",
-            backgroundSize: "32px 32px",
-        }}
-        />
-
-        <div className="relative mx-auto grid max-w-7xl items-center gap-16 px-5 py-20 md:py-28 lg:grid-cols-2 lg:px-8">
-        
-        {/* Hero content */}
-        <div className="max-w-2xl z-10">
-            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-4 py-1.5 text-sm font-medium text-amber-800">
-            <span className="flex h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
-            سیستم جامع مدیریت تبلیغات محیطی
+  return (
+    <div dir="rtl" className="min-h-screen bg-background text-foreground flex flex-col"> 
+      <main className="flex-1">
+        {/* ۱. بخش Hero و جستجوی سریع */}
+        <section className="relative overflow-hidden border-b border-border bg-linear-to-b from-muted/60 to-background py-16 sm:py-24">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 text-center">
+            <div className="inline-flex items-center gap-2 rounded-full border border-border bg-background px-4 py-1.5 text-xs font-semibold text-primary shadow-sm mb-6">
+              <Sparkles className="h-3.5 w-3.5" />
+              <span>اولین سامانه هوشمند رزرواسیون آنی و تحلیل داده‌محور تبلیغات محیطی</span>
             </div>
 
-            {/* Typewriter Effect Title */}
-            <h1 className="text-4xl font-extrabold leading-[1.5] tracking-tight sm:text-5xl lg:text-6xl min-h-[100px] sm:min-h-[140px]">
-            {titleWords.map((word, index) => (
-                <span key={index}>
-                <span
-                    className={`inline-block ml-2 transition-all duration-500 ${word.style} ${
-                    index < visibleWords
-                        ? "opacity-100 translate-y-0"
-                        : "opacity-0 translate-y-2"
-                    }`}
-                >
-                    {word.text}
-                </span>
-                {word.breakLine && <br className="hidden sm:block" />}
-                </span>
-            ))}
+            <h1 className="mx-auto max-w-4xl text-3xl font-extrabold tracking-tight sm:text-5xl lg:leading-tight">
+              رزرو آنلاین بیلبورد و سازه‌های تبلیغاتی با{" "}
+              <span className="text-primary">مشاوره هوش مصنوعی</span>
             </h1>
 
-            <p className={`mt-6 max-w-xl text-base leading-8 text-slate-600 sm:text-lg transition-all duration-1000 delay-300 ${visibleWords === titleWords.length ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
-            اوها (Ooha) پلتفرم یکپارچه سازمانی برای کشف، رزرو و مدیریت بیلبوردهای شهری است. جایگاه برند خود را روی نقشه مشخص کنید و تمام فرآیندها را به سادگی مدیریت نمایید.
+            <p className="mx-auto mt-5 max-w-2xl text-base sm:text-lg text-muted-foreground leading-relaxed">
+              موقعیت مکانی صدها بیلبورد، استرابورد و تلویزیون شهری را روی نقشه تعاملی بررسی کنید، مخاطبان هدف را تحلیل نمایید و بدون تداخل، سازه دلخواه خود را به صورت آنی رزرو کنید.
             </p>
 
-            {/* Hero actions */}
-            <div className={`mt-10 flex flex-col gap-4 sm:flex-row transition-all duration-1000 delay-500 ${visibleWords === titleWords.length ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
-            <Link href="/register" className="inline-flex items-center justify-center gap-3 rounded-lg bg-slate-900 px-8 py-4 font-semibold text-white shadow-xl shadow-slate-900/20 transition-all hover:-translate-y-0.5 hover:bg-slate-800">
-                شروع کمپین جدید
-                <span aria-hidden="true">←</span>
-            </Link>
-
-            <Link href="#features" className="inline-flex items-center justify-center rounded-lg border-2 border-slate-200 bg-white px-8 py-4 font-semibold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50">
-                مشاهده نقشه بیلبوردها
-            </Link>
-            </div>
-        </div>
-
-        {/* Hero Visual: Map & Billboard */}
-        <div className="relative mx-auto w-full max-w-lg lg:max-w-none aspect-square lg:aspect-[4/3] perspective-1000">
-            <div className="relative w-full h-full rounded-2xl border border-slate-200 bg-slate-100 shadow-2xl overflow-hidden group transform-gpu transition-transform duration-700 hover:rotate-0 rotate-x-12 rotate-y-[-10deg] rotate-z-[5deg]">
-            
-            {/* Fake Isometric Map Background */}
-            <div className="absolute inset-0 bg-[#e2e8f0]">
-                <div className="absolute top-1/3 left-0 w-full h-24 bg-slate-700 -skew-y-12 flex items-center justify-center border-y-4 border-slate-600">
-                <div className="w-full h-1 border-t-2 border-dashed border-slate-400"></div>
+            {/* باکس جستجوی سریع (Quick Search) */}
+            <div className="mx-auto mt-10 max-w-4xl rounded-2xl border border-border bg-background p-3 shadow-lg">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+                <div className="flex items-center gap-2 rounded-xl bg-muted px-3.5 py-2.5">
+                  <MapPin className="h-5 w-5 text-muted-foreground shrink-0" />
+                  <select className="w-full bg-transparent text-sm font-medium text-foreground focus:outline-none">
+                    <option value="">انتخاب شهر (همه شهرها)</option>
+                    <option value="tehran">تهران</option>
+                    <option value="isfahan">اصفهان</option>
+                    <option value="mashhad">مشهد</option>
+                    <option value="shiraz">شیراز</option>
+                    <option value="tabriz">تبریز</option>
+                  </select>
                 </div>
-                <div className="absolute left-1/3 top-0 w-24 h-full bg-slate-700 skew-x-12 flex flex-col items-center justify-center border-x-4 border-slate-600 z-0">
-                <div className="h-full w-1 border-l-2 border-dashed border-slate-400"></div>
+
+                <div className="flex items-center gap-2 rounded-xl bg-muted px-3.5 py-2.5">
+                  <Layers className="h-5 w-5 text-muted-foreground shrink-0" />
+                  <select className="w-full bg-transparent text-sm font-medium text-foreground focus:outline-none">
+                    <option value="">نوع سازه تبلیغاتی</option>
+                    <option value="billboard">بیلبورد بزرگراهی</option>
+                    <option value="straboard">استرابورد</option>
+                    <option value="bridge">پل عابر پیاده</option>
+                    <option value="tv">تلویزیون شهری دیجیتال</option>
+                    <option value="lightbox">لایت‌باکس</option>
+                  </select>
                 </div>
-                
-                <div className="absolute top-10 left-10 w-20 h-20 bg-slate-300 shadow-[8px_8px_0_0_rgba(0,0,0,0.1)] rounded-sm"></div>
-                <div className="absolute bottom-20 right-10 w-32 h-24 bg-slate-300 shadow-[8px_8px_0_0_rgba(0,0,0,0.1)] rounded-sm"></div>
-                <div className="absolute top-1/2 right-1/4 w-16 h-16 bg-slate-300 shadow-[8px_8px_0_0_rgba(0,0,0,0.1)] rounded-sm"></div>
-            </div>
 
-            {/* Map Pins */}
-            <div className="absolute top-1/4 left-1/4 animate-bounce z-10 text-amber-500 drop-shadow-md">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
-            </div>
-            <div className="absolute bottom-1/3 right-1/4 text-slate-500 drop-shadow-md opacity-75">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
-            </div>
-
-            {/* The 3D Billboard */}
-            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-20">
-                <div className="absolute left-1/2 top-full w-4 h-24 bg-slate-800 -translate-x-1/2 shadow-lg"></div>
-                
-                <div className="relative w-72 h-40 bg-slate-900 rounded-lg p-2 shadow-2xl border-b-4 border-slate-950 transform group-hover:scale-105 transition-transform duration-500">
-                <div className="w-full h-full bg-slate-800 border-2 border-slate-700 flex flex-col items-center justify-center relative overflow-hidden">
-                    <div className="absolute top-0 left-0 w-full h-1/2 bg-gradient-to-b from-white/10 to-transparent"></div>
-                    
-                    <span className="text-4xl font-serif font-bold text-amber-500 mb-1 tracking-wider">Ooha.</span>
-                    <span className="text-sm text-slate-300 font-medium">پلتفرم بیلبورد سازمانی</span>
+                <div className="flex items-center gap-2 rounded-xl bg-muted px-3.5 py-2.5">
+                  <TrendingUp className="h-5 w-5 text-muted-foreground shrink-0" />
+                  <select className="w-full bg-transparent text-sm font-medium text-foreground focus:outline-none">
+                    <option value="">منطقه هدف</option>
+                    <option value="highway">شاهراه‌ها و اتوبان‌ها</option>
+                    <option value="university">مناطق دانشگاهی</option>
+                    <option value="luxury">مناطق لوکس</option>
+                    <option value="mall">مراکز خرید</option>
+                  </select>
                 </div>
-                
-                <div className="absolute -top-3 left-1/4 w-3 h-4 bg-slate-700 rounded-t-sm shadow-[0_4px_10px_rgba(251,191,36,0.5)]"></div>
-                <div className="absolute -top-3 right-1/4 w-3 h-4 bg-slate-700 rounded-t-sm shadow-[0_4px_10px_rgba(251,191,36,0.5)]"></div>
+
+                <Link
+                  href="/structures"
+                  className="flex items-center justify-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-bold text-primary-foreground transition-all hover:opacity-90"
+                >
+                  <Search className="h-4 w-4" />
+                  جستجو روی نقشه
+                </Link>
+              </div>
+            </div>
+
+            {/* دکمه‌های دسترسی سریع زیر سرچ */}
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-4 text-sm">
+              <Link
+                href="/ai-advisor"
+                className="inline-flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2 font-semibold text-primary hover:bg-primary/10 transition-colors"
+              >
+                <Sparkles className="h-4 w-4" />
+                طراحی هوشمند کمپین با AI بر اساس بودجه شما
+                <ArrowLeft className="h-4 w-4" />
+              </Link>
+            </div>
+          </div>
+        </section>
+
+        {/* ۲. نوار آمار زنده سازه‌ها (Live Stats) */}
+        <section className="border-b border-border bg-background py-8">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="grid grid-cols-2 gap-6 md:grid-cols-4 text-center">
+              <div className="space-y-1">
+                <p className="text-2xl sm:text-3xl font-extrabold text-primary">+۱,۵۲۰</p>
+                <p className="text-xs sm:text-sm font-medium text-muted-foreground">سازه تبلیغاتی ثبت‌شده</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-2xl sm:text-3xl font-extrabold text-success">۸۴۰</p>
+                <p className="text-xs sm:text-sm font-medium text-muted-foreground">بیلبورد آماده رزرو فوری (آنی)</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-2xl sm:text-3xl font-extrabold text-foreground">۲۴ شهر</p>
+                <p className="text-xs sm:text-sm font-medium text-muted-foreground">پوشش سراسری روی نقشه GIS</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-2xl sm:text-3xl font-extrabold text-foreground">۴۸ ساعت</p>
+                <p className="text-xs sm:text-sm font-medium text-muted-foreground">قفل اختصاصی سازه جهت قرارداد</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ۳. دسته‌بندی‌های محبوب و مناطق هدف */}
+        <section className="py-16 bg-muted/40">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-10 gap-4">
+              <div>
+                <h2 className="text-2xl font-bold text-foreground">دسته‌بندی سازه‌ها و مناطق هدف</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  بر اساس نوع رسانه محیطی یا تیپ مخاطبان منطقه، سازه مناسب خود را بیابید
+                </p>
+              </div>
+              <Link
+                href="/structures"
+                className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary hover:underline"
+              >
+                مشاهده کاوشگر تمام‌صفحه نقشه
+                <ArrowLeft className="h-4 w-4" />
+              </Link>
+            </div>
+
+            {/* کارت‌های نوع سازه */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+              {structureTypes.map((item, idx) => {
+                const IconComponent = item.icon;
+                return (
+                  <Link
+                    key={idx}
+                    href="/structures"
+                    className="group flex flex-col justify-between rounded-2xl border border-border bg-background p-5 transition-all hover:border-primary hover:shadow-md"
+                  >
+                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-muted text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                      <IconComponent className="h-5 w-5" />
+                    </div>
+                    <div className="mt-6">
+                      <h3 className="font-bold text-foreground group-hover:text-primary transition-colors">
+                        {item.title}
+                      </h3>
+                      <p className="mt-1 text-xs text-muted-foreground">{item.count}</p>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+
+            {/* تگ‌های مناطق هدف */}
+            <div className="mt-8 flex flex-wrap items-center gap-2.5">
+              <span className="text-xs font-semibold text-muted-foreground ml-2">
+                فیلتر سریع مناطق پرمتقاضی:
+              </span>
+              {targetZones.map((zone, idx) => (
+                <Link
+                  key={idx}
+                  href="/structures"
+                  className="rounded-full border border-border bg-background px-4 py-1.5 text-xs font-medium text-foreground hover:border-primary hover:text-primary transition-colors"
+                >
+                  {zone}
+                </Link>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* ۴. ویترین سازه‌های ویژه با وضعیت Real-Time */}
+        <section className="py-16 bg-background">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-between mb-10">
+              <div>
+                <h2 className="text-2xl font-bold text-foreground">سازه‌های منتخب آماده اکران</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  وضعیت رزرو تابلوها به صورت زنده (WebSocket) بروزرسانی می‌شود
+                </p>
+              </div>
+              <Link
+                href="/structures"
+                className="rounded-xl border border-border px-4 py-2 text-sm font-semibold text-foreground hover:bg-muted transition-colors"
+              >
+                همه سازه‌ها
+              </Link>
+            </div>
+
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+              {featuredStructures.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex flex-col justify-between rounded-2xl border border-border bg-background overflow-hidden shadow-sm hover:shadow-md transition-shadow"
+                >
+                  <div>
+                    {/* جایگاه تصویر سازه + Badge وضعیت */}
+                    <div className="relative h-48 w-full bg-muted flex items-center justify-center border-b border-border">
+                      <MapPin className="h-10 w-10 text-muted-foreground/40" />
+                      <div className="absolute top-3 right-3">
+                        {item.status === "available" ? (
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-success/15 px-3 py-1 text-xs font-bold text-success backdrop-blur-sm">
+                            <span className="h-2 w-2 rounded-full bg-success animate-pulse" />
+                            آماده رزرو
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-danger/15 px-3 py-1 text-xs font-bold text-danger backdrop-blur-sm">
+                            <Clock className="h-3 w-3" />
+                            قفل موقت ۴۸ ساعته
+                          </span>
+                        )}
+                      </div>
+                      <span className="absolute bottom-3 left-3 rounded-lg bg-foreground/80 px-2.5 py-1 text-[11px] font-medium text-background">
+                        ابعاد: {item.dimensions}
+                      </span>
+                    </div>
+
+                    {/* اطلاعات کارت */}
+                    <div className="p-5">
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
+                        <span className="font-semibold text-primary">{item.type}</span>
+                        <span>•</span>
+                        <span>{item.city}</span>
+                      </div>
+                      <h3 className="font-bold text-base text-foreground line-clamp-1">
+                        {item.title}
+                      </h3>
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        مخاطب هدف: {item.audience}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* قیمت و دکمه اقدام */}
+                  <div className="border-t border-border bg-muted/30 px-5 py-4 flex items-center justify-between">
+                    <div>
+                      <span className="block text-[11px] text-muted-foreground">تعرفه ماهانه اکران:</span>
+                      <span className="text-base font-extrabold text-foreground">
+                        {item.price} <span className="text-xs font-normal">تومان</span>
+                      </span>
+                    </div>
+                    <Link
+                      href={`/structures/${item.id}`}
+                      className="rounded-xl bg-primary px-4 py-2 text-xs font-bold text-primary-foreground hover:opacity-90 transition-opacity"
+                    >
+                      مشاهده و رزرو
+                    </Link>
+                  </div>
                 </div>
+              ))}
             </div>
+          </div>
+        </section>
+
+        {/* ۵. بنر ویزارد دستیار هوش مصنوعی (AI Campaign Advisor) */}
+        <section className="py-12 px-4 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-7xl rounded-3xl bg-primary text-primary-foreground p-8 sm:p-12 shadow-xl">
+            <div className="grid grid-cols-1 gap-8 lg:grid-cols-12 items-center">
+              <div className="lg:col-span-8 space-y-4">
+                <div className="inline-flex items-center gap-2 rounded-full bg-primary-foreground/15 px-3.5 py-1 text-xs font-semibold">
+                  <Sparkles className="h-4 w-4" />
+                  ویزارد هوشمند مشاور کمپین (AI Campaign Advisor)
+                </div>
+                <h2 className="text-2xl sm:text-3xl font-extrabold leading-snug">
+                  نمی‌دانید کدام بیلبوردها برای محصول شما بیشترین بازدهی را دارند؟
+                </h2>
+                <p className="text-sm sm:text-base text-primary-foreground/85 leading-relaxed max-w-2xl">
+                  فقط شهر، سقف بودجه و توضیح کوتاهی از محصول خود (مثلاً: «معرفی نوشیدنی انرژی‌زا ویژه دانشجویان») را وارد کنید تا هوش مصنوعی سامانه با تحلیل معنایی، بهترین سبد سازه‌ها را به همراه دلیل تحلیلی فارسی به شما پیشنهاد دهد.
+                </p>
+                <div className="pt-2 flex flex-wrap gap-6 text-xs sm:text-sm font-medium">
+                  <span className="flex items-center gap-1.5">
+                    <CheckCircle2 className="h-4 w-4" /> ۱. تعیین شهر و بودجه
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <CheckCircle2 className="h-4 w-4" /> ۲. شرح سناریو و مخاطب هدف
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <CheckCircle2 className="h-4 w-4" /> ۳. دریافت چیدمان بهینه بیلبوردها
+                  </span>
+                </div>
+              </div>
+
+              <div className="lg:col-span-4 flex lg:justify-end">
+                <Link
+                  href="/ai-advisor"
+                  className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-2xl bg-background px-7 py-4 text-sm font-extrabold text-foreground shadow-lg hover:bg-muted transition-colors"
+                >
+                  <Sparkles className="h-5 w-5 text-primary" />
+                  شروع طراحی هوشمند کمپین
+                </Link>
+              </div>
             </div>
+          </div>
+        </section>
 
-            <div className="absolute -bottom-6 -left-6 z-30 hidden rounded-xl border border-slate-200 bg-white p-4 shadow-xl sm:flex items-center gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-green-50 text-green-600">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
+        {/* ۶. فرم تماس سریع و مشاوره سازمانی */}
+        <section className="py-16 border-t border-border bg-muted/30">
+          <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
+            <div className="rounded-2xl border border-border bg-background p-6 sm:p-10 shadow-sm">
+              <div className="text-center max-w-xl mx-auto mb-8">
+                <h2 className="text-xl sm:text-2xl font-bold text-foreground">
+                  درخواست مشاوره سریع و اکران سازمانی
+                </h2>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  آژانس‌های تبلیغاتی و برندها جهت دریافت پیش‌فاکتور رسمی یا راهنمایی بیشتر می‌توانند مشخصات خود را ثبت کنند.
+                </p>
+              </div>
+
+              <form className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <input
+                  type="text"
+                  placeholder="نام و نام خانوادگی / نام برند"
+                  className="rounded-xl border border-border bg-muted/50 px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+                />
+                <input
+                  type="tel"
+                  placeholder="شماره موبایل (مثال: ۰۹۱۲۰۰۰۰۰۰۰)"
+                  className="rounded-xl border border-border bg-muted/50 px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+                />
+                <button
+                  type="button"
+                  className="flex items-center justify-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-bold text-primary-foreground hover:opacity-90 transition-opacity"
+                >
+                  <PhoneCall className="h-4 w-4" />
+                  ثبت درخواست تماس
+                </button>
+              </form>
             </div>
-            <div>
-                <p className="text-sm font-bold text-slate-900">وضعیت شبکه</p>
-                <p className="text-xs text-slate-500">۳۴۲ بیلبورد فعال</p>
-            </div>
-            </div>
-        </div>
-        </div>
-    </section>
+          </div>
+        </section>
+      </main>
 
-    {/* Features */}
-    <section id="features" className="border-t border-slate-200 bg-slate-50">
-        <div className="mx-auto max-w-7xl px-5 py-20 lg:px-8 lg:py-24">
-        <div className="mx-auto max-w-2xl text-center">
-            <span className="text-sm font-bold tracking-wider text-amber-600 uppercase">مزایای پلتفرم</span>
-            <h2 className="mt-4 text-3xl font-extrabold text-slate-900 sm:text-4xl">استاندارد جدید در تبلیغات محیطی</h2>
-            <p className="mt-4 text-lg text-slate-600">داده‌های دقیق، مدیریت آسان و شفافیت مالی؛ تمام آنچه برای یک کمپین موفق نیاز دارید.</p>
+      {/* فوتر ساده */}
+      <footer className="border-t border-border bg-background py-8 text-center text-xs text-muted-foreground">
+        <div className="mx-auto max-w-7xl px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <p>© ۱۴۰۳ پلتفرم هوشمند اتوماسیون و رزرواسیون تبلیغات محیطی. تمامی حقوق محفوظ است.</p>
+          <div className="flex items-center gap-4">
+            <span className="flex items-center gap-1">
+              <ShieldCheck className="h-4 w-4 text-success" />
+              تضمین عدم تداخل رزروها
+            </span>
+          </div>
         </div>
-
-        <div className="mt-16 grid gap-8 md:grid-cols-3">
-            {features.map((feature) => (
-            <article key={feature.number} className="group relative rounded-2xl bg-white p-8 shadow-sm ring-1 ring-slate-200 transition-all hover:shadow-lg hover:ring-slate-300">
-                <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-lg bg-slate-900 text-lg font-bold text-white">{feature.number}</div>
-                <h3 className="text-xl font-bold text-slate-900">{feature.title}</h3>
-                <p className="mt-4 text-slate-600 leading-relaxed">{feature.description}</p>
-            </article>
-            ))}
-        </div>
-        </div>
-    </section>
-
-    {/* About */}
-    <section id="about" className="mx-auto max-w-7xl px-5 py-20 lg:px-8 lg:py-24">
-        <div className="grid items-center gap-12 rounded-3xl bg-slate-900 px-8 py-16 md:grid-cols-2 lg:px-16">
-        <div>
-            <span className="text-sm font-bold text-amber-500">چرا اوها؟</span>
-            <h2 className="mt-4 text-3xl font-extrabold text-white sm:text-4xl leading-tight">مدیریت تبلیغات، <br />در سطح کلان.</h2>
-        </div>
-        <div>
-            <p className="text-lg text-slate-300 leading-relaxed">ما در اوها با ایجاد یک زیرساخت شفاف و داده‌محور، فاصله بین صاحبان رسانه و برندها را از بین برده‌ایم. تصمیم‌گیری‌های مبتنی بر داده، جایگزین روش‌های سنتی شده است.</p>
-            <Link href="/register" className="mt-8 inline-flex items-center gap-2 font-bold text-amber-500 transition-colors hover:text-amber-400">
-            درخواست دمو سازمانی
-            <span aria-hidden="true">←</span>
-            </Link>
-        </div>
-        </div>
-    </section>
-
-    {/* Footer */}
-    <footer className="border-t border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-7xl flex-col gap-6 px-5 py-10 md:flex-row md:items-center md:justify-between lg:px-8">
-        <Link href="/" className="text-xl font-black text-slate-900">
-            Ooha<span className="text-amber-500">.</span>
-        </Link>
-        <p className="text-sm font-medium text-slate-500">
-            © {new Date().getFullYear()} پلتفرم سازمانی اوها. تمامی حقوق محفوظ است.
-        </p>
-        <div className="flex items-center gap-6 text-sm font-medium text-slate-600">
-            <Link href="/login" className="transition-colors hover:text-slate-900">ورود همکاران</Link>
-            <Link href="/terms" className="transition-colors hover:text-slate-900">قوانین و مقررات</Link>
-        </div>
-        </div>
-    </footer>
-    </main>
-);
+      </footer>
+    </div>
+  );
 }
