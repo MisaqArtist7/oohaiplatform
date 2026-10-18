@@ -3,12 +3,18 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 
-// تعریف فونت لوکال (اگر از نسخه Variable استفاده می‌کنی یک فایل کافیست)
-const vazirmatn = localFont({
-  src: "../public/fonts/Vazirmatn-VariableFont_wght.woff2",
-  variable: "--font-vazirmatn",
+const iranyekan = localFont({
+  src: [
+    { path: "./fonts/Qs_Iranyekan light.ttf", weight: "300", style: "normal" },
+    { path: "./fonts/Qs_Iranyekan.ttf", weight: "400", style: "normal" },
+    { path: "./fonts/Qs_Iranyekan medium.ttf", weight: "500", style: "normal" },
+    { path: "./fonts/Qs_Iranyekan bold.ttf", weight: "700", style: "normal" },
+    { path: "./fonts/Qs_Iranyekan extrabold.ttf", weight: "800", style: "normal" },
+    { path: "./fonts/Qs_Iranyekan black.ttf", weight: "900", style: "normal" },
+  ],
+  variable: "--font-iranyekan",
   display: "swap",
-  weight: "100 900",
+  fallback: ["Tahoma", "Arial", "sans-serif"],
 });
 
 export const metadata: Metadata = {
@@ -31,8 +37,8 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="fa" dir="rtl" className={vazirmatn?.variable}>
-      <body className={`${vazirmatn.className} antialiased bg-background text-foreground`}>
+    <html lang="fa" dir="rtl" className={iranyekan.variable}>
+      <body className={`${iranyekan.className} antialiased bg-background text-foreground`}>
         {children}
       </body>
     </html>

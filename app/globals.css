@@ -17,6 +17,8 @@
 }
 
 @theme inline {
+  --font-sans: var(--font-iranyekan); 
+  
   --color-background: var(--background);
   --color-foreground: var(--foreground);
 
