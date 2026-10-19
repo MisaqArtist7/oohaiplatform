@@ -63,7 +63,7 @@ return (
         {/* دکمه‌های سمت چپ (ورود / پنل کاربری) */}
         <div className="hidden md:flex items-center gap-3">
         <Link
-            href="/register"
+            href="/login"
             className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:opacity-90"
         >
             <User className="h-4 w-4" />
