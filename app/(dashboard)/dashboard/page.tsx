@@ -12,6 +12,7 @@ LogOut,
 Plus,
 CalendarDays,
 AlertCircle,
+Handshake,
 } from "lucide-react";
 
 /* ───────────────────────── تنظیمات ───────────────────────── */
@@ -22,6 +23,7 @@ const API = process.env.NEXT_PUBLIC_API_URL ?? "https://oohaiplatform.ir/api/v1"
 const ROUTES = {
 structures: "/structures",
 booking: (id: string) => `/dashboard/bookings/${id}`,
+mediaOwnerRequest: "/mediaOwnerRequest",
 };
 
 /* ───────────────────────── تایپ‌ها و وضعیت‌ها ───────────────────────── */
@@ -156,11 +158,29 @@ const token = store.get("token")?.value;
 if (!token) redirect("/register?r=dashboard-no-token");
 
 let userName = "کاربر";
+let userObj: { name?: string; permissions?: string[]; roles?: (string | { name?: string })[] } | null = null;
 try {
-    const user = JSON.parse(store.get("user")?.value ?? "null");
-    if (user?.name) userName = user.name;
+    userObj = JSON.parse(store.get("user")?.value ?? "null");
+    if (userObj?.name) userName = userObj.name;
 } catch {
     // کوکی کاربر خراب بود؛ با نام پیش‌فرض ادامه می‌دهیم
+}
+
+// بررسی پرمیژن و نقش سوپر ادمین
+const userPermissions: string[] = Array.isArray(userObj?.permissions) ? userObj.permissions : [];
+const userRoles = Array.isArray(userObj?.roles) ? userObj.roles : [];
+const roleNames = userRoles.map((r) => (typeof r === "string" ? r : r?.name)).filter(Boolean);
+
+const isSuperAdmin =
+  userPermissions.some((p: string) =>
+    ["superadmin", "super-admin", "super_admin", "dashboard.superadmin"].includes(p.toLowerCase())
+  ) ||
+  roleNames.some((r: string) =>
+    ["superadmin", "super-admin", "super_admin"].includes(r.toLowerCase())
+  );
+
+if (isSuperAdmin) {
+  redirect("/dashboard/superadmin");
 }
 
 // ۲) دریافت رزروها
@@ -219,6 +239,14 @@ return (
             <span>نمای کلی</span>
         </Link>
 
+        <Link
+            href={ROUTES.mediaOwnerRequest}
+            className="flex shrink-0 items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+        >
+            <Handshake className="h-4 w-4 text-primary" />
+            <span>همکاری</span>
+        </Link>
+
         {/* صفحه‌های بعدی؛ تا ساخته نشدن غیرفعال‌اند */}
         <span
             aria-disabled="true"
@@ -258,13 +286,22 @@ return (
                 وضعیت رزروهای خود را از اینجا دنبال کنید.
             </p>
             </div>
-            <Link
-            href={ROUTES.structures}
-            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-            >
-            <Plus className="h-4 w-4" />
-            <span>رزرو سازه جدید</span>
-            </Link>
+            <div className="flex flex-wrap items-center gap-3">
+              <Link
+                href={ROUTES.mediaOwnerRequest}
+                className="inline-flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-4 py-2.5 text-sm font-semibold text-primary shadow-xs transition-all hover:bg-primary/10 hover:border-primary/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+              >
+                <Handshake className="h-4 w-4" />
+                <span>همکاری</span>
+              </Link>
+              <Link
+                href={ROUTES.structures}
+                className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+              >
+                <Plus className="h-4 w-4" />
+                <span>رزرو سازه جدید</span>
+              </Link>
+            </div>
         </header>
 
         {/* خطای دریافت اطلاعات */}
