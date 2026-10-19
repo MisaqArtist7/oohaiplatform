@@ -7,6 +7,20 @@ export function getRedirectPath(
   permissions: string[] = [],
   roles: (string | UserRole)[] = []
 ): string {
+  // ۰. بررسی دسترسی یا نقش سوپر ادمین
+  const roleNames = roles.map((r) => (typeof r === "string" ? r : r?.name)).filter(Boolean);
+  const isSuperAdmin =
+    permissions.some((p) =>
+      ["superadmin", "super-admin", "super_admin", "dashboard.superadmin"].includes(p.toLowerCase())
+    ) ||
+    roleNames.some((r) =>
+      ["superadmin", "super-admin", "super_admin"].includes(r.toLowerCase())
+    );
+
+  if (isSuperAdmin) {
+    return "/dashboard/superadmin";
+  }
+
   // ۱. بررسی مجوزهای صریح
   if (permissions.includes("dashboard.admin")) {
     return "/admin";
@@ -25,8 +39,7 @@ export function getRedirectPath(
   }
 
   // ۲. بررسی نقش‌ها (در صورت خالی بودن یا ناقص بودن دسترسی‌ها)
-  const roleNames = roles.map((r) => (typeof r === "string" ? r : r?.name)).filter(Boolean);
-  if (roleNames.includes("admin") || roleNames.includes("super-admin")) {
+  if (roleNames.includes("admin")) {
     return "/admin";
   }
 

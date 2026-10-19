@@ -8,10 +8,6 @@ import {
   CalendarCheck,
   Handshake,
   LogOut,
-  MapPin,
-  TrendingUp,
-  FileCheck,
-  CheckCircle,
   Clock,
   ArrowRight,
 } from "lucide-react";

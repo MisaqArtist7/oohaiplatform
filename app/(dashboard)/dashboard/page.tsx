@@ -24,6 +24,7 @@ const ROUTES = {
 structures: "/structures",
 booking: (id: string) => `/dashboard/bookings/${id}`,
 mediaOwnerRequest: "/mediaOwnerRequest",
+proposals: "/dashboard/proposals",
 };
 
 /* ───────────────────────── تایپ‌ها و وضعیت‌ها ───────────────────────── */
@@ -167,9 +168,13 @@ try {
 }
 
 // بررسی پرمیژن و نقش سوپر ادمین
-const userPermissions: string[] = Array.isArray(userObj?.permissions) ? userObj.permissions : [];
-const userRoles = Array.isArray(userObj?.roles) ? userObj.roles : [];
-const roleNames = userRoles.map((r) => (typeof r === "string" ? r : r?.name)).filter(Boolean);
+const userPermissions: string[] =
+  userObj?.permissions && Array.isArray(userObj.permissions) ? userObj.permissions : [];
+const userRoles =
+  userObj?.roles && Array.isArray(userObj.roles) ? userObj.roles : [];
+const roleNames: string[] = userRoles
+  .map((r) => (typeof r === "string" ? r : r?.name))
+  .filter((r): r is string => Boolean(r));
 
 const isSuperAdmin =
   userPermissions.some((p: string) =>
@@ -256,14 +261,13 @@ return (
             <span>رزروهای من</span>
             <span className="rounded-full bg-muted px-2 py-0.5 text-[10px]">به‌زودی</span>
         </span>
-        <span
-            aria-disabled="true"
-            className="flex shrink-0 items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground/60"
+        <Link
+            href={ROUTES.proposals}
+            className="flex shrink-0 items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
         >
-            <Sparkles className="h-4 w-4" />
+            <Sparkles className="h-4 w-4 text-primary" />
             <span>پیشنهادهای هوشمند</span>
-            <span className="rounded-full bg-muted px-2 py-0.5 text-[10px]">به‌زودی</span>
-        </span>
+        </Link>
         </nav>
 
         {/* کاربر و خروج در دسکتاپ */}
