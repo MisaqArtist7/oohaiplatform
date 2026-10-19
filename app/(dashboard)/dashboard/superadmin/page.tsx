@@ -5,12 +5,19 @@ import {
   ShieldAlert,
   Users,
   Building2,
-  CalendarCheck,
   Handshake,
   LogOut,
   Clock,
   ArrowRight,
+  RefreshCw,
 } from "lucide-react";
+import RequestsTable from "./RequestsTable";
+import {
+  type MediaOwnerRequestItem,
+  extractRequestsList,
+  getStatusBadge,
+  DEFAULT_SAMPLE_REQUESTS,
+} from "./types";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "https://oohaiplatform.ir/api/v1";
 
@@ -44,6 +51,46 @@ export default async function SuperAdminDashboardPage() {
     // fallback
   }
 
+  // تلاش برای دریافت لیست درخواست‌های همکاری از اندپوینت‌های معتبر با توکن احراز هویت
+  let requests: MediaOwnerRequestItem[] = [];
+
+  const endpoints = [
+    process.env.NEXT_PUBLIC_API_URL
+      ? `${process.env.NEXT_PUBLIC_API_URL}/admin/media-owner-requests`
+      : null,
+    "http://localhost/api/v1/admin/media-owner-requests",
+    "https://oohaiplatform.ir/api/v1/admin/media-owner-requests",
+  ].filter(Boolean) as string[];
+
+  for (const url of endpoints) {
+    try {
+      const res = await fetch(url, {
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        cache: "no-store",
+      });
+
+      if (res.ok) {
+        const json = await res.json().catch(() => null);
+        const list = extractRequestsList(json);
+        if (list.length > 0) {
+          requests = list;
+          break;
+        }
+      }
+    } catch {
+      // ادامه به اندپوینت بعدی
+    }
+  }
+
+  const effectiveRequests = requests.length > 0 ? requests : DEFAULT_SAMPLE_REQUESTS;
+  const pendingCount = effectiveRequests.filter((r) => {
+    const badge = getStatusBadge(r.status);
+    return badge.key === "pending";
+  }).length;
+
   return (
     <div dir="rtl" className="min-h-screen bg-slate-50 lg:flex">
       {/* ── سایدبار سوپر ادمین ── */}
@@ -70,6 +117,21 @@ export default async function SuperAdminDashboardPage() {
           >
             <ShieldAlert className="h-4 w-4" />
             <span>داشبورد سوپر ادمین</span>
+          </Link>
+
+          <Link
+            href="#requests-section"
+            className="flex shrink-0 items-center justify-between gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+          >
+            <div className="flex items-center gap-2.5">
+              <Handshake className="h-4 w-4 text-indigo-600" />
+              <span>درخواست‌های همکاری</span>
+            </div>
+            {requests.length > 0 && (
+              <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-bold text-indigo-700">
+                {requests.length.toLocaleString("fa-IR")}
+              </span>
+            )}
           </Link>
 
           <Link
@@ -113,14 +175,14 @@ export default async function SuperAdminDashboardPage() {
               <div className="flex items-center gap-2">
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-semibold text-indigo-800">
                   <ShieldAlert className="h-3.5 w-3.5" />
-                  دسترسی سطح ۱ (Super Admin)
+                  مدیریت کل سیستم (Super Admin)
                 </span>
               </div>
               <h1 className="mt-2 text-2xl font-extrabold text-foreground">
                 خوش آمدید، {userName}
               </h1>
               <p className="mt-1 text-sm text-muted-foreground">
-                مدیریت کل سیستم، نظارت بر درخواست‌های مالکان، سازه‌ها و رزروها.
+                نظارت بر درخواست‌های مالکان رسانه، تایید و رد درخواست‌ها و بررسی مدارک ارسالی.
               </p>
             </div>
           </header>
@@ -129,24 +191,28 @@ export default async function SuperAdminDashboardPage() {
           <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="rounded-2xl border border-border bg-white p-5 shadow-xs">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-muted-foreground">درخواست‌های همکاری جدید</span>
+                <span className="text-xs font-medium text-muted-foreground">درخواست‌های در انتظار</span>
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
                   <Clock className="h-5 w-5" />
                 </div>
               </div>
-              <p className="mt-3 text-2xl font-black text-foreground">۳</p>
-              <p className="mt-1 text-xs text-amber-600 font-medium">نیاز به بررسی مدارک</p>
+              <p className="mt-3 text-2xl font-black text-foreground">
+                {pendingCount.toLocaleString("fa-IR")}
+              </p>
+              <p className="mt-1 text-xs text-amber-600 font-medium">نیاز به تایید یا رد</p>
             </div>
 
             <div className="rounded-2xl border border-border bg-white p-5 shadow-xs">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-muted-foreground">کل سازه‌های تبلیغاتی</span>
+                <span className="text-xs font-medium text-muted-foreground">کل درخواست‌های دریافتی</span>
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
-                  <Building2 className="h-5 w-5" />
+                  <Handshake className="h-5 w-5" />
                 </div>
               </div>
-              <p className="mt-3 text-2xl font-black text-foreground">۱۲۸</p>
-              <p className="mt-1 text-xs text-muted-foreground">سازه‌های فعال سراسر کشور</p>
+              <p className="mt-3 text-2xl font-black text-foreground">
+                {effectiveRequests.length.toLocaleString("fa-IR")}
+              </p>
+              <p className="mt-1 text-xs text-indigo-600 font-medium">ثبت‌شده در سامانه</p>
             </div>
 
             <div className="rounded-2xl border border-border bg-white p-5 shadow-xs">
@@ -162,32 +228,44 @@ export default async function SuperAdminDashboardPage() {
 
             <div className="rounded-2xl border border-border bg-white p-5 shadow-xs">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-muted-foreground">رزروهای در جریان</span>
+                <span className="text-xs font-medium text-muted-foreground">سازه‌های فعال</span>
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-sky-50 text-sky-600">
-                  <CalendarCheck className="h-5 w-5" />
+                  <Building2 className="h-5 w-5" />
                 </div>
               </div>
-              <p className="mt-3 text-2xl font-black text-foreground">۲۴</p>
-              <p className="mt-1 text-xs text-sky-600 font-medium">در مرحله پیش‌فاکتور و اکران</p>
+              <p className="mt-3 text-2xl font-black text-foreground">۱۲۸</p>
+              <p className="mt-1 text-xs text-sky-600 font-medium">سراسر کشور</p>
             </div>
           </section>
 
-          {/* کارت بخش‌های مدیریتی */}
-          <section className="rounded-2xl border border-border bg-white p-6 shadow-xs">
-            <h2 className="text-base font-bold text-foreground">بخش‌های مدیریتی سوپر ادمین</h2>
-            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <div className="rounded-xl border border-border p-4 hover:border-indigo-300 transition-colors">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
-                    <Handshake className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-foreground">درخواست‌های همکاری مالکان</h3>
-                    <p className="text-xs text-muted-foreground">بررسی اسناد و تایید دسترسی مالکان رسانه</p>
-                  </div>
-                </div>
+          {/* ── بخش درخواست‌های همکاری مالکان رسانه ── */}
+          <section id="requests-section" className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-bold text-foreground">
+                  مدیریت درخواست‌های همکاری مالکان رسانه
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  امکان تایید درخواست‌ها، بلاک مالکان تاییدشده (تستی)، و رد درخواست‌ها با درج دلیل موجه (حداکثر ۵۰۰ کاراکتر).
+                </p>
               </div>
 
+              <a
+                href="/dashboard/superadmin"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-white px-3 py-2 text-xs font-medium text-foreground hover:bg-muted transition-colors shadow-xs"
+              >
+                <RefreshCw className="h-3.5 w-3.5 text-muted-foreground" />
+                <span>بروزرسانی زنده</span>
+              </a>
+            </div>
+
+            <RequestsTable initialRequests={requests} />
+          </section>
+
+          {/* سایر بخش‌های مدیریتی */}
+          <section className="rounded-2xl border border-border bg-white p-6 shadow-xs">
+            <h2 className="text-base font-bold text-foreground">سایر بخش‌های مدیریتی</h2>
+            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="rounded-xl border border-border p-4 hover:border-indigo-300 transition-colors">
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
