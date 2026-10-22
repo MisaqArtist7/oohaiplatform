@@ -1,8 +1,13 @@
 export type BookingStatusType =
   | "pending_review"
+  | "locked_for_contract"
+  | "proforma_issued"
   | "awaiting_payment"
+  | "payment_submitted"
+  | "approved"
   | "active"
   | "cancelled"
+  | "rejected"
   | "completed";
 
 export interface BookingTimelineItem {
@@ -65,7 +70,7 @@ export interface ClientBooking {
   status: {
     value: BookingStatusType;
     label: string;
-    color: "amber" | "indigo" | "emerald" | "rose" | "slate";
+    color: "amber" | "indigo" | "emerald" | "rose" | "slate" | "blue";
   };
   brandName: string;
   contactPerson: string;

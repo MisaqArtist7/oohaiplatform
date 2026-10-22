@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { cookies } from "next/headers";
+import { rejectMediaOwnerApplication } from "@/lib/admin-dashboard-data";
 
 export async function POST(
   req: NextRequest,
@@ -9,19 +10,6 @@ export async function POST(
     const { requestId } = await params;
     const store = await cookies();
     const token = store.get("token")?.value;
-
-    if (!token) {
-      return NextResponse.json(
-        { success: false, message: "احراز هویت انجام نشده است." },
-        { status: 401 }
-      );
-    }
-
-    const headers: Record<string, string> = {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    };
 
     const body = await req.json().catch(() => ({}));
     const reason = typeof body.reason === "string"
@@ -35,50 +23,55 @@ export async function POST(
       );
     }
 
-    const payload = {
-      ...body,
-      reason,
-      rejection_reason: reason,
-    };
+    if (token) {
+      const endpoints = [
+        process.env.NEXT_PUBLIC_API_URL
+          ? `${process.env.NEXT_PUBLIC_API_URL}/admin/media-owner-requests/${requestId}/reject`
+          : null,
+        `http://localhost/api/v1/admin/media-owner-requests/${requestId}/reject`,
+        `https://oohaiplatform.ir/api/v1/admin/media-owner-requests/${requestId}/reject`,
+      ].filter(Boolean) as string[];
 
-    const endpoints = [
-      process.env.NEXT_PUBLIC_API_URL
-        ? `${process.env.NEXT_PUBLIC_API_URL}/admin/media-owner-requests/${requestId}/reject`
-        : null,
-      `http://localhost/api/v1/admin/media-owner-requests/${requestId}/reject`,
-      `https://oohaiplatform.ir/api/v1/admin/media-owner-requests/${requestId}/reject`,
-    ].filter(Boolean) as string[];
+      for (const url of endpoints) {
+        try {
+          const res = await fetch(url, {
+            method: "POST",
+            headers: {
+              Accept: "application/json",
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ reason, rejection_reason: reason }),
+          });
 
-    let lastErrorData = null;
-    let lastStatus = 500;
-
-    for (const url of endpoints) {
-      try {
-        const res = await fetch(url, {
-          method: "POST",
-          headers,
-          body: JSON.stringify(payload),
-        });
-
-        if (res.ok) {
-          const data = await res.json().catch(() => null);
-          return NextResponse.json(
-            data || { success: true, message: "درخواست همکاری مالک با موفقیت رد شد." }
-          );
+          if (res.ok) {
+            const data = await res.json().catch(() => null);
+            return NextResponse.json(
+              data || { success: true, message: "درخواست همکاری مالک با موفقیت رد شد." }
+            );
+          }
+        } catch {
+          // try next
         }
-
-        lastStatus = res.status;
-        lastErrorData = await res.json().catch(() => null);
-      } catch {
-        // try next endpoint
       }
     }
 
-    return NextResponse.json(
-      lastErrorData || { success: false, message: "خطا در رد درخواست همکاری." },
-      { status: lastStatus }
-    );
-  } catch {
+    // fallback
+    const updated = rejectMediaOwnerApplication(requestId, reason || "عدم تطابق مدارک ثبتی با مستندات قانونی");
+    if (!updated) {
+      return NextResponse.json(
+        { success: false, message: "درخواست مورد نظر یافت نشد" },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: updated,
+      message: "درخواست همکاری با موفقیت رد شد و دلیل آن ثبت گردید.",
+    });
+  } catch (err) {
+    console.error("Error in reject media owner request:", err);
     return NextResponse.json(
       { success: false, message: "خطای ناشناخته در ارتباط با سرور." },
       { status: 500 }

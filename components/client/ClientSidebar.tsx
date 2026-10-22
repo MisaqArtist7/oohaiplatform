@@ -63,6 +63,13 @@ export default function ClientSidebar({
       icon: MapPin,
       exact: true,
     },
+    {
+      title: "پنل مدیریت و مالی (Admin)",
+      href: "/admin/bookings",
+      icon: ShieldCheck,
+      badge: "ادمین",
+      exact: false,
+    },
   ];
 
   const isActive = (itemHref: string) => {
