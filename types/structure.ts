@@ -1,4 +1,4 @@
-export type StructureStatus = 'available' | 'booked' | 'reserved';
+export type StructureStatus = 'available' | 'booked' | 'reserved' | 'pending_review' | 'inactive';
 
 export interface StructureType {
   id: string;
@@ -83,6 +83,7 @@ export interface Structure {
   description: string;
   features: string[];
   owner: StructureOwner;
+  targetAudience?: string[];
   createdAt: string;
 }
 

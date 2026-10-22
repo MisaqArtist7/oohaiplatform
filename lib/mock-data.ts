@@ -894,3 +894,203 @@ export const mockBookingsStore: Array<{
   status: "pending_review" | "confirmed";
   createdAt: string;
 }> = [];
+
+// حافظه مشترک سازه‌ها برای عملیات افزودن، ویرایش و مالکان رسانه
+export const structuresStore: Structure[] = [...mockStructures];
+
+export function getMyStructuresList(): Structure[] {
+  // سازه‌های متعلق به مالک رسانه جاری (کانون آوای رسانه تهران و سازه‌های ثبت‌شده توسط کاربر)
+  const myItems = structuresStore.filter(
+    (s) =>
+      s.owner.name.includes("آوای رسانه") ||
+      s.owner.name.includes("مالک") ||
+      s.owner.name.includes("من")
+  );
+  if (myItems.length > 0) return myItems;
+  return structuresStore.slice(0, 6);
+}
+
+export function addNewStructure(data: Partial<Structure> & {
+  title: string;
+  typeId?: string;
+  categoryId?: string;
+  basePrice?: number;
+  width?: number;
+  height?: number;
+  lat?: number;
+  lng?: number;
+  address?: string;
+  district?: string;
+  targetAudience?: string[];
+  galleryImages?: string[];
+}): Structure {
+  const newId = `str-${Math.floor(200 + Math.random() * 800)}`;
+  const typeObj = mockStructureTypes.find((t) => t.id === data.typeId || t.slug === data.typeId) || mockStructureTypes[0];
+  const catObj = mockStructureCategories.find((c) => c.id === data.categoryId || c.slug === data.categoryId) || mockStructureCategories[0];
+  
+  const w = data.width || 12;
+  const h = data.height || 4;
+  const area = w * h;
+  const basePrice = Number(data.basePrice || data.pricing?.basePriceMonthly || 180000000);
+
+  const gallery = data.galleryImages && data.galleryImages.length > 0
+    ? data.galleryImages
+    : (data.images?.gallery && data.images.gallery.length > 0)
+    ? data.images.gallery
+    : [
+        "https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=1200&q=80",
+        "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=80",
+      ];
+
+  const newStructure: Structure = {
+    id: newId,
+    code: data.code || `TH-${typeObj.slug.toUpperCase().slice(0, 3)}-${Math.floor(100 + Math.random() * 900)}`,
+    title: data.title,
+    slug: `structure-${newId}`,
+    type: typeObj,
+    category: catObj,
+    status: data.status || "available",
+    statusLabel: data.status === "pending_review" ? "در انتظار تایید" : (data.status === "booked" ? "رزرو شده" : "فعال و آماده اکران"),
+    dimensions: {
+      width: w,
+      height: h,
+      area,
+      label: `${toPersianDigits(w)} × ${toPersianDigits(h)} متر (${toPersianDigits(area)} متر مربع)`,
+    },
+    location: {
+      city: data.location?.city || "تهران",
+      province: data.location?.province || "تهران",
+      district: data.district || data.location?.district || "منطقه ۱ تهران",
+      address: data.address || data.location?.address || "تهران، معبر اصلی",
+      lat: data.lat || data.location?.lat || 35.7385,
+      lng: data.lng || data.location?.lng || 51.4112,
+      viewingAngle: data.location?.viewingAngle || "رو به ترافیک اصلی",
+      trafficFlow: data.location?.trafficFlow || "بیش از ۸۰٬۰۰۰ خودرو در روز",
+    },
+    pricing: {
+      basePriceMonthly: basePrice,
+      dailyRate: Math.round(basePrice / 30),
+      currency: "IRR",
+      printablePrice: formatToman(basePrice),
+    },
+    specs: {
+      lighting: "پروژکتورهای هوشمند LED با تایمر شبانه",
+      orientation: "دید مستقیم رانندگان",
+      visibilityScore: 90,
+      minDurationDays: 15,
+      mediaType: "بنر فلکس کره‌ای ۵۰۰ گرمی",
+      isTwoSided: false,
+      rushHourPeak: "۱۶:۳۰ الی ۲۱:۰۰",
+      ...data.specs,
+    },
+    images: {
+      day: gallery[0] || "https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=1200&q=80",
+      night: gallery[1] || gallery[0] || "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=80",
+      gallery,
+    },
+    description: data.description || `سازه تبلیغاتی در موقعیت پرتردد با زاویه دید عالی برای اکران کمپین‌های محیطی و برندینگ.`,
+    features: data.features || [
+      "نورپردازی استاندارد و پرقدرت شبانه",
+      "دارای بیمه مسئولیت مدنی",
+      "امکان عقد قرارداد مستقیم با کانون آوای رسانه",
+    ],
+    owner: {
+      name: "کانون تبلیغاتی آوای رسانه تهران",
+      verified: true,
+      rating: 5.0,
+      contactNumber: "02188442211",
+      ...data.owner,
+    },
+    targetAudience: data.targetAudience || ["رانندگان و مسافران", "قشر تجاری و اداری"],
+    createdAt: new Date().toLocaleDateString("fa-IR"),
+  };
+
+  structuresStore.unshift(newStructure);
+  return newStructure;
+}
+
+export function updateExistingStructure(
+  id: string,
+  updates: Partial<Structure> & {
+    basePrice?: number;
+    width?: number;
+    height?: number;
+    lat?: number;
+    lng?: number;
+    address?: string;
+    district?: string;
+    typeId?: string;
+    categoryId?: string;
+    galleryImages?: string[];
+  }
+): Structure | null {
+  const idx = structuresStore.findIndex((s) => s.id === id || s.code === id);
+  if (idx === -1) return null;
+
+  const current = structuresStore[idx];
+
+  const typeObj = updates.typeId
+    ? mockStructureTypes.find((t) => t.id === updates.typeId || t.slug === updates.typeId) || current.type
+    : current.type;
+
+  const catObj = updates.categoryId
+    ? mockStructureCategories.find((c) => c.id === updates.categoryId || c.slug === updates.categoryId) || current.category
+    : current.category;
+
+  const w = updates.width || current.dimensions.width;
+  const h = updates.height || current.dimensions.height;
+  const area = w * h;
+
+  const basePrice = updates.basePrice !== undefined
+    ? Number(updates.basePrice)
+    : updates.pricing?.basePriceMonthly !== undefined
+    ? updates.pricing.basePriceMonthly
+    : current.pricing.basePriceMonthly;
+
+  const gallery = updates.galleryImages || updates.images?.gallery || current.images.gallery;
+
+  const updated: Structure = {
+    ...current,
+    ...updates,
+    title: updates.title || current.title,
+    code: updates.code || current.code,
+    type: typeObj,
+    category: catObj,
+    status: updates.status || current.status,
+    statusLabel: updates.status === "pending_review" ? "در انتظار تایید" : (updates.status === "booked" ? "رزرو شده" : (updates.status === "available" ? "فعال و آماده اکران" : current.statusLabel)),
+    dimensions: {
+      width: w,
+      height: h,
+      area,
+      label: `${toPersianDigits(w)} × ${toPersianDigits(h)} متر (${toPersianDigits(area)} متر مربع)`,
+    },
+    location: {
+      ...current.location,
+      address: updates.address || updates.location?.address || current.location.address,
+      district: updates.district || updates.location?.district || current.location.district,
+      lat: updates.lat || updates.location?.lat || current.location.lat,
+      lng: updates.lng || updates.location?.lng || current.location.lng,
+    },
+    pricing: {
+      ...current.pricing,
+      basePriceMonthly: basePrice,
+      dailyRate: Math.round(basePrice / 30),
+      printablePrice: formatToman(basePrice),
+    },
+    specs: {
+      ...current.specs,
+      ...updates.specs,
+    },
+    images: {
+      day: gallery[0] || current.images.day,
+      night: gallery[1] || gallery[0] || current.images.night,
+      gallery,
+    },
+    description: updates.description || current.description,
+    targetAudience: updates.targetAudience || current.targetAudience,
+  };
+
+  structuresStore[idx] = updated;
+  return updated;
+}
+

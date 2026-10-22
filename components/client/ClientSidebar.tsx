@@ -1,6 +1,5 @@
 "use client";
 
-import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -12,6 +11,7 @@ import {
   ShieldCheck,
   PanelLeftClose,
   PanelLeftOpen,
+  Layers,
 } from "lucide-react";
 
 interface ClientSidebarProps {
@@ -42,6 +42,13 @@ export default function ClientSidebar({
       href: "/client/proposals",
       icon: Sparkles,
       badge: "هوشمند",
+      exact: false,
+    },
+    {
+      title: "پنل مالکان رسانه (سازه‌ها)",
+      href: "/media-owner/structures",
+      icon: Layers,
+      badge: "مالک",
       exact: false,
     },
     {

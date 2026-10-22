@@ -94,11 +94,11 @@ export default function Header() {
               مشاور هوشمند کمپین (AI)
             </Link>
             <Link
-              href="/client/media-owner-request"
+              href="/media-owner/structures"
               className="flex items-center gap-1.5 transition-colors hover:text-primary"
             >
-              <Building2 className="h-4 w-4" />
-              ثبت رسانه (مالکان)
+              <Building2 className="h-4 w-4 text-amber-600" />
+              پنل مالکان رسانه
             </Link>
           </nav>
         </div>
@@ -171,12 +171,12 @@ export default function Header() {
             مشاور هوشمند کمپین (AI)
           </Link>
           <Link
-            href="/client/media-owner-request"
+            href="/media-owner/structures"
             onClick={() => setMobileMenuOpen(false)}
             className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-foreground hover:bg-muted"
           >
-            <Building2 className="h-4 w-4 text-primary" />
-            ثبت رسانه (مالکان)
+            <Building2 className="h-4 w-4 text-amber-600" />
+            پنل مالکان رسانه
           </Link>
           <div className="pt-2 border-t border-border">
             {loading ? (
