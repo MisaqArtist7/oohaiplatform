@@ -1,1 +1,0 @@
-export { getRedirectPath } from "./redirect-by-permissions";

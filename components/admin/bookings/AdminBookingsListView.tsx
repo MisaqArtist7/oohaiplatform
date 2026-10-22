@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import {
   Search,
@@ -11,7 +11,6 @@ import {
   User,
   CreditCard,
   Clock,
-  ArrowUpDown,
   RefreshCw,
   CheckCircle2,
   AlertCircle,
@@ -21,11 +20,9 @@ import {
   X,
 } from "lucide-react";
 import { AdminBooking } from "@/types/admin-dashboard";
-import { getAdminBookings } from "@/lib/admin-api";
+import { useAdminBookingsQuery } from "@/features/admin/hooks/useAdmin";
 
 export default function AdminBookingsListView() {
-  const [bookings, setBookings] = useState<AdminBooking[]>([]);
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [customerFilter, setCustomerFilter] = useState("");
@@ -34,31 +31,18 @@ export default function AdminBookingsListView() {
   const [endDateFilter, setEndDateFilter] = useState("");
   const [showFilters, setShowFilters] = useState(false);
 
-  // واکشی داده‌های رزروها
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      const res = await getAdminBookings({
-        status: statusFilter !== "all" ? statusFilter : undefined,
-        customer: customerFilter || undefined,
-        structure: structureFilter || undefined,
-        startDate: startDateFilter || undefined,
-        endDate: endDateFilter || undefined,
-        search: search || undefined,
-      });
-      if (res.success && res.data) {
-        setBookings(res.data);
-      }
-    } catch (err) {
-      console.error("Error loading admin bookings:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const filterParams = useMemo(() => ({
+    status: statusFilter !== "all" ? statusFilter : undefined,
+    customer: customerFilter || undefined,
+    structure: structureFilter || undefined,
+    startDate: startDateFilter || undefined,
+    endDate: endDateFilter || undefined,
+    search: search || undefined,
+  }), [statusFilter, customerFilter, structureFilter, startDateFilter, endDateFilter, search]);
 
-  useEffect(() => {
-    loadData();
-  }, [statusFilter]);
+  const { data: res, isLoading: loading, refetch: loadData } = useAdminBookingsQuery(filterParams);
+  const bookings: AdminBooking[] = useMemo(() => res?.data || [], [res?.data]);
+
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -170,7 +154,7 @@ export default function AdminBookingsListView() {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={loadData}
+            onClick={() => { loadData(); }}
             disabled={loading}
             className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-bold text-slate-700 shadow-xs hover:bg-slate-50 transition-colors disabled:opacity-50"
           >

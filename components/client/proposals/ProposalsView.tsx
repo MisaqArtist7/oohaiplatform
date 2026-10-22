@@ -1,7 +1,10 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import Link from "next/link";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { toast } from "sonner";
 import {
   Sparkles,
   Layers,
@@ -17,24 +20,27 @@ import {
   ChevronLeft,
 } from "lucide-react";
 import { ProposalItem } from "@/types/client-dashboard";
-import { fetchProposals, fetchProposalById, submitNewProposal } from "@/lib/client-api";
+import { fetchProposalById } from "@/lib/client-api";
 import { formatToman, toPersianDigits } from "@/lib/mock-data";
-import { initialProposals } from "@/lib/client-dashboard-data";
+import {
+  useProposalsQuery,
+  useCreateProposalMutation,
+} from "@/features/proposals/hooks/useProposals";
+import {
+  proposalFormSchema,
+  ProposalFormValues,
+} from "@/features/proposals/schemas/proposal.schema";
+import { Button } from "@/shared/components/ui/button";
+import { Badge } from "@/shared/components/ui/badge";
+import { Input } from "@/shared/components/ui/input";
+import { Textarea } from "@/shared/components/ui/textarea";
 
 export default function ProposalsView() {
   const [activeTab, setActiveTab] = useState<"new" | "history">("new");
-  const [proposals, setProposals] = useState<ProposalItem[]>(initialProposals);
-  const [loadingHistory, setLoadingHistory] = useState(false);
 
-  // فیلدهای فرم پیشنهاد جدید
-  const [title, setTitle] = useState("");
-  const [budget, setBudget] = useState<number>(350000000);
-  const [cityId, setCityId] = useState<number>(1);
-  const [cityName, setCityName] = useState<string>("تهران");
-  const [scenario, setScenario] = useState("");
-
-  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  // دریافت تاریخچه پیشنهادات با TanStack Query
+  const { data: proposals = [], isLoading: loadingHistory, refetch } = useProposalsQuery();
+  const createProposalMutation = useCreateProposalMutation();
 
   // مودال نمایش جزئیات پیشنهاد
   const [selectedProposal, setSelectedProposal] = useState<ProposalItem | null>(null);
@@ -55,83 +61,52 @@ export default function ProposalsView() {
     { label: "۱ میلیارد", value: 1000000000 },
   ];
 
-  const loadProposals = async () => {
-    setLoadingHistory(true);
-    try {
-      const data = await fetchProposals();
-      setProposals(data);
-    } catch (err) {
-      console.error("Error loading proposals:", err);
-    } finally {
-      setLoadingHistory(false);
-    }
-  };
+  // فرم ثبت پیشنهاد با React Hook Form و Zod
+  const {
+    register,
+    handleSubmit,
+    watch,
+    setValue,
+    reset,
+    formState: { errors, isSubmitting },
+  } = useForm<ProposalFormValues>({
+    resolver: zodResolver(proposalFormSchema),
+    defaultValues: {
+      title: "",
+      budget: 350000000,
+      city_id: 1,
+      cityName: "تهران",
+      scenario: "",
+    },
+  });
 
-  useEffect(() => {
-    let ignore = false;
-    async function init() {
-      try {
-        const data = await fetchProposals();
-        if (!ignore && data.length > 0) {
-          setProposals(data);
-        }
-      } catch (err) {
-        console.error("Failed to load proposals:", err);
-      }
-    }
-    init();
-    return () => {
-      ignore = true;
-    };
-  }, []);
+  const watchBudget = watch("budget");
+  const watchCityId = watch("city_id");
 
   const handleCityChange = (cId: number) => {
-    setCityId(cId);
+    setValue("city_id", cId);
     const found = cities.find((c) => c.id === cId);
-    if (found) setCityName(found.name);
+    if (found) setValue("cityName", found.name);
   };
 
-  const validate = () => {
-    const errs: Record<string, string> = {};
-    if (!budget || budget <= 0) {
-      errs.budget = "بودجه مدنظر را به درستی وارد کنید.";
-    }
-    if (!scenario.trim() || scenario.trim().length < 15) {
-      errs.scenario = "توضیحات و سناریوی کمپین باید حداقل ۱۵ کاراکتر باشد.";
-    }
-    setFormErrors(errs);
-    return Object.keys(errs).length === 0;
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!validate()) return;
-
-    setIsSubmitting(true);
-    setFormErrors({});
-
+  const onSubmit = async (data: ProposalFormValues) => {
     try {
-      const newProp = await submitNewProposal({
-        title: title.trim() || `کمپین تبلیغاتی در ${cityName}`,
-        budget,
-        city_id: cityId,
-        cityName,
-        scenario: scenario.trim(),
+      const res = await createProposalMutation.mutateAsync({
+        ...data,
+        title: data.title?.trim() || `کمپین تبلیغاتی در ${data.cityName}`,
       });
 
-      // افزودن به لیست و باز کردن خودکار جزئیات پیشنهاد
-      setProposals((prev) => [newProp, ...prev]);
-      setSelectedProposal(newProp);
-      setActiveTab("history");
+      toast.success("پیشنهاد هوشمند کمپین با موفقیت تولید و چیدمان شد.");
+      refetch();
 
-      // ریست فرم
-      setTitle("");
-      setScenario("");
+      if (res.data) {
+        setSelectedProposal(res.data);
+      }
+      setActiveTab("history");
+      reset();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "خطا در پردازش هوش مصنوعی.";
-      setFormErrors({ form: msg });
-    } finally {
-      setIsSubmitting(false);
+      toast.error(msg);
     }
   };
 
@@ -140,8 +115,8 @@ export default function ProposalsView() {
     try {
       const prop = await fetchProposalById(id);
       if (prop) setSelectedProposal(prop);
-    } catch (err) {
-      console.error("Error loading detail:", err);
+    } catch {
+      toast.error("خطا در بارگذاری جزئیات پیشنهاد");
     } finally {
       setLoadingDetail(false);
     }
@@ -166,7 +141,7 @@ export default function ProposalsView() {
           <button
             type="button"
             onClick={() => setActiveTab("new")}
-            className={`flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold transition-all ${
+            className={`flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold transition-all cursor-pointer ${
               activeTab === "new"
                 ? "bg-primary text-primary-foreground shadow-xs"
                 : "text-slate-600 hover:text-foreground"
@@ -177,11 +152,8 @@ export default function ProposalsView() {
           </button>
           <button
             type="button"
-            onClick={() => {
-              setActiveTab("history");
-              loadProposals();
-            }}
-            className={`flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold transition-all ${
+            onClick={() => setActiveTab("history")}
+            className={`flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold transition-all cursor-pointer ${
               activeTab === "history"
                 ? "bg-primary text-primary-foreground shadow-xs"
                 : "text-slate-600 hover:text-foreground"
@@ -208,25 +180,21 @@ export default function ProposalsView() {
               </p>
             </div>
 
-            {formErrors.form && (
-              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl">
-                {formErrors.form}
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
               {/* عنوان دلخواه کمپین */}
               <div>
                 <label className="block text-xs font-bold text-foreground mb-1">
                   عنوان یا نام کمپین (اختیاری):
                 </label>
-                <input
+                <Input
                   type="text"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
+                  {...register("title")}
                   placeholder="مثلاً: کمپین فروش تابستانه محصولات در غرب و مرکز تهران"
-                  className="w-full rounded-xl border border-border bg-slate-50 px-3.5 py-2.5 text-xs text-foreground focus:border-primary focus:bg-white focus:outline-none"
+                  className="text-xs"
                 />
+                {errors.title && (
+                  <p className="text-[11px] text-rose-600 mt-1">{errors.title.message}</p>
+                )}
               </div>
 
               {/* انتخاب بودجه */}
@@ -236,7 +204,7 @@ export default function ProposalsView() {
                     بودجه کل مدنظر برای دوره اکران: <span className="text-rose-500">*</span>
                   </label>
                   <span className="text-xs font-black text-primary font-sans">
-                    {formatToman(budget)}
+                    {formatToman(watchBudget || 0)}
                   </span>
                 </div>
 
@@ -245,9 +213,9 @@ export default function ProposalsView() {
                     <button
                       key={p.value}
                       type="button"
-                      onClick={() => setBudget(p.value)}
-                      className={`rounded-xl py-2 text-xs font-bold transition-all border ${
-                        budget === p.value
+                      onClick={() => setValue("budget", p.value)}
+                      className={`rounded-xl py-2 text-xs font-bold transition-all border cursor-pointer ${
+                        watchBudget === p.value
                           ? "bg-primary text-white border-primary shadow-xs"
                           : "bg-slate-50 border-border text-slate-700 hover:bg-slate-100"
                       }`}
@@ -257,15 +225,14 @@ export default function ProposalsView() {
                   ))}
                 </div>
 
-                <input
+                <Input
                   type="number"
                   step="10000000"
-                  value={budget}
-                  onChange={(e) => setBudget(Number(e.target.value))}
-                  className="w-full rounded-xl border border-border bg-slate-50 px-3.5 py-2.5 text-xs text-foreground focus:border-primary focus:bg-white focus:outline-none"
+                  {...register("budget", { valueAsNumber: true })}
+                  className="text-xs"
                 />
-                {formErrors.budget && (
-                  <p className="text-[11px] text-rose-600 mt-1">{formErrors.budget}</p>
+                {errors.budget && (
+                  <p className="text-[11px] text-rose-600 mt-1">{errors.budget.message}</p>
                 )}
               </div>
 
@@ -280,8 +247,8 @@ export default function ProposalsView() {
                       key={c.id}
                       type="button"
                       onClick={() => handleCityChange(c.id)}
-                      className={`rounded-xl px-4 py-2 text-xs font-bold border transition-all ${
-                        cityId === c.id
+                      className={`rounded-xl px-4 py-2 text-xs font-bold border transition-all cursor-pointer ${
+                        watchCityId === c.id
                           ? "bg-slate-900 text-white border-slate-900 shadow-xs"
                           : "bg-slate-50 border-border text-slate-700 hover:bg-slate-100"
                       }`}
@@ -297,29 +264,24 @@ export default function ProposalsView() {
                 <label className="block text-xs font-bold text-foreground mb-1">
                   سناریو، مخاطب هدف و هدف کمپین: <span className="text-rose-500">*</span>
                 </label>
-                <textarea
+                <Textarea
                   rows={4}
-                  value={scenario}
-                  onChange={(e) => setScenario(e.target.value)}
+                  {...register("scenario")}
                   placeholder="مثال: معرفی اپلیکیشن خدمات مالی جدید با تمرکز بر کارکنان شرکت‌ها و اصناف در بزرگراه‌های شلوغ مدرس و همت. مدت زمان مدنظر ۴۵ روز است..."
-                  className="w-full rounded-xl border border-border bg-slate-50 p-3 text-xs text-foreground focus:border-primary focus:bg-white focus:outline-none resize-none leading-relaxed"
+                  className="text-xs resize-none leading-relaxed"
                 />
-                <div className="flex justify-between text-[11px] text-muted-foreground mt-1">
-                  <span>حداقل ۱۵ کاراکتر شامل جزئیات محصول، مخاطب هدف و ترجیحات شما</span>
-                  <span>{toPersianDigits(scenario.length)} کاراکتر</span>
-                </div>
-                {formErrors.scenario && (
-                  <p className="text-[11px] text-rose-600 mt-1">{formErrors.scenario}</p>
+                {errors.scenario && (
+                  <p className="text-[11px] text-rose-600 mt-1">{errors.scenario.message}</p>
                 )}
               </div>
 
               {/* دکمه سابمیت */}
-              <button
+              <Button
                 type="submit"
-                disabled={isSubmitting}
-                className="w-full flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3.5 text-xs font-black text-white shadow-md hover:bg-primary/90 transition-all disabled:opacity-50 cursor-pointer"
+                disabled={isSubmitting || createProposalMutation.isPending}
+                className="w-full h-11 text-xs font-black gap-2 shadow-md cursor-pointer"
               >
-                {isSubmitting ? (
+                {isSubmitting || createProposalMutation.isPending ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
                     <span>هوش مصنوعی در حال تحلیل ترافیک و چیدمان سبد رسانه...</span>
@@ -330,7 +292,7 @@ export default function ProposalsView() {
                     <span>تولید پیشنهاد هوشمند و استراتژی سبد رسانه</span>
                   </>
                 )}
-              </button>
+              </Button>
             </form>
           </div>
 
@@ -391,13 +353,13 @@ export default function ProposalsView() {
               <History className="h-8 w-8 text-muted-foreground mx-auto" />
               <h4 className="text-sm font-bold text-foreground">هنوز پیشنهادی ثبت نشده است</h4>
               <p className="text-xs text-muted-foreground">برای شروع به تب ثبت پیشنهاد جدید بروید.</p>
-              <button
+              <Button
                 type="button"
                 onClick={() => setActiveTab("new")}
-                className="rounded-xl bg-primary px-4 py-2 text-xs font-bold text-white"
+                className="text-xs font-bold"
               >
                 ثبت اولین پیشنهاد
-              </button>
+              </Button>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -411,9 +373,9 @@ export default function ProposalsView() {
                       <span className="font-mono text-[11px] font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded">
                         {prop.trackingNumber}
                       </span>
-                      <span className="rounded-full bg-primary/10 text-primary px-2.5 py-0.5 text-[11px] font-bold">
+                      <Badge variant="outline" className="text-[11px] font-bold">
                         {prop.statusLabel}
-                      </span>
+                      </Badge>
                     </div>
 
                     <h3 className="text-sm font-bold text-foreground">
@@ -438,11 +400,12 @@ export default function ProposalsView() {
                       تحلیل هوشمند سبد رسانه آماده است
                     </span>
 
-                    <button
+                    <Button
                       type="button"
+                      size="sm"
                       disabled={loadingDetail}
                       onClick={() => handleOpenDetail(prop.id)}
-                      className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-3.5 py-2 text-xs font-bold text-white hover:bg-slate-800 transition-colors disabled:opacity-50"
+                      className="gap-1.5 text-xs font-bold"
                     >
                       {loadingDetail ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -450,7 +413,7 @@ export default function ProposalsView() {
                         <Eye className="h-3.5 w-3.5" />
                       )}
                       <span>مشاهده استراتژی و سبد سازه‌ها</span>
-                    </button>
+                    </Button>
                   </div>
                 </div>
               ))}
@@ -459,7 +422,7 @@ export default function ProposalsView() {
         </div>
       )}
 
-      {/* مودال مشاهده جزئیات استراتژی پیشنهاد هوش مصنوعی (Proposal Detail Modal) */}
+      {/* مودال مشاهده جزئیات استراتژی پیشنهاد هوش مصنوعی */}
       {selectedProposal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-200"
@@ -489,7 +452,7 @@ export default function ProposalsView() {
               <button
                 type="button"
                 onClick={() => setSelectedProposal(null)}
-                className="text-muted-foreground hover:text-foreground text-sm font-bold p-1 rounded-lg hover:bg-slate-100"
+                className="text-muted-foreground hover:text-foreground text-sm font-bold p-1 rounded-lg hover:bg-slate-100 cursor-pointer"
               >
                 ✕
               </button>
@@ -593,13 +556,14 @@ export default function ProposalsView() {
                 <span>مشاهده این سازه‌ها روی نقشه</span>
                 <ChevronLeft className="h-4 w-4" />
               </Link>
-              <button
+              <Button
                 type="button"
+                variant="ghost"
                 onClick={() => setSelectedProposal(null)}
-                className="text-xs text-muted-foreground hover:underline"
+                className="text-xs text-muted-foreground"
               >
                 بستن پنجره
-              </button>
+              </Button>
             </div>
           </div>
         </div>

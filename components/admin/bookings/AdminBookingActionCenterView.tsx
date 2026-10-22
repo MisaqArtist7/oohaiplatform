@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   ArrowRight,
   Lock,
@@ -14,28 +13,22 @@ import {
   Download,
   Building,
   User,
-  Phone,
-  Calendar,
   History,
-  ShieldAlert,
-  Send,
   X,
   RefreshCw,
-  ExternalLink,
-  ChevronDown,
   Upload,
-  Info,
 } from "lucide-react";
+import { toast } from "sonner";
 import { AdminBooking, BookingAuditLog } from "@/types/admin-dashboard";
 import {
-  getAdminBookingById,
-  lockBookingSlot,
-  issueProformaInvoice,
-  approvePaymentAndBroadcast,
-  rejectBookingRequest,
-  transitionBookingState,
-  getBookingAuditLogs,
-} from "@/lib/admin-api";
+  useAdminBookingDetailQuery,
+  useAdminBookingLogsQuery,
+  useLockBookingMutation,
+  useIssueProformaMutation,
+  useApprovePaymentMutation,
+  useRejectBookingMutation,
+  useTransitionBookingMutation,
+} from "@/features/admin/hooks/useAdmin";
 
 interface AdminBookingActionCenterViewProps {
   bookingId: string;
@@ -44,11 +37,28 @@ interface AdminBookingActionCenterViewProps {
 export default function AdminBookingActionCenterView({
   bookingId,
 }: AdminBookingActionCenterViewProps) {
-  const router = useRouter();
-  const [booking, setBooking] = useState<AdminBooking | null>(null);
-  const [logs, setLogs] = useState<BookingAuditLog[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [actionLoading, setActionLoading] = useState(false);
+  // واکشی داده‌های رزرو و لاگ‌ها از TanStack Query
+  const {
+    data: bookingRes,
+    isLoading: bookingLoading,
+    refetch: refetchBooking,
+  } = useAdminBookingDetailQuery(bookingId);
+
+  const {
+    data: logsRes,
+    refetch: refetchLogs,
+  } = useAdminBookingLogsQuery(bookingId);
+
+  const lockMutation = useLockBookingMutation();
+  const proformaMutation = useIssueProformaMutation();
+  const approvePaymentMutation = useApprovePaymentMutation();
+  const rejectMutation = useRejectBookingMutation();
+  const transitionMutation = useTransitionBookingMutation();
+
+  const booking: AdminBooking | null = bookingRes?.data || null;
+  const logs: BookingAuditLog[] = logsRes?.data || [];
+  const loading = bookingLoading && !booking;
+
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   // وضعیت مودال‌ها
@@ -74,51 +84,42 @@ export default function AdminBookingActionCenterView({
   const [newStatusLabel, setNewStatusLabel] = useState("");
   const [transitionNote, setTransitionNote] = useState("");
 
-  // بارگذاری داده‌های رزرو و لاگ‌ها
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const [bookingRes, logsRes] = await Promise.all([
-        getAdminBookingById(bookingId),
-        getBookingAuditLogs(bookingId),
-      ]);
-
-      if (bookingRes.success && bookingRes.data) {
-        setBooking(bookingRes.data);
-        setInvoiceAmount(bookingRes.data.totalPrice || 0);
-        setInvoiceNumber(`PF-${new Date().getFullYear()}-${bookingRes.data.id.replace("BK-", "")}`);
-      }
-      if (logsRes.success && logsRes.data) {
-        setLogs(logsRes.data);
-      }
-    } catch (err) {
-      console.error("Error fetching booking details:", err);
-    } finally {
-      setLoading(false);
+  const handleOpenProformaModal = () => {
+    if (booking) {
+      setInvoiceAmount(booking.totalPrice || 0);
+      setInvoiceNumber(`PF-${new Date().getFullYear()}-${booking.id.replace("BK-", "")}`);
     }
+    setProformaModalOpen(true);
   };
 
-  useEffect(() => {
-    fetchData();
-  }, [bookingId]);
+
+  const fetchData = () => {
+    refetchBooking();
+    refetchLogs();
+  };
+
+  const actionLoading =
+    lockMutation.isPending ||
+    proformaMutation.isPending ||
+    approvePaymentMutation.isPending ||
+    rejectMutation.isPending ||
+    transitionMutation.isPending;
 
   // عملیات: قفل ۴۸ ساعته
   const handleLock = async () => {
-    setActionLoading(true);
     try {
-      const res = await lockBookingSlot(bookingId);
-      if (res.success && res.data) {
-        setBooking(res.data);
+      const res = await lockMutation.mutateAsync(bookingId);
+      if (res.success) {
+        toast.success(res.message || "قفل ۴۸ ساعته سازه با موفقیت فعال گردید.");
         setFeedback({ type: "success", message: res.message || "قفل ۴۸ ساعته سازه با موفقیت فعال گردید." });
         setLockModalOpen(false);
-        fetchData();
       } else {
+        toast.error(res.message || "خطا در اعمال قفل سازه");
         setFeedback({ type: "error", message: res.message || "خطا در اعمال قفل سازه" });
       }
     } catch {
+      toast.error("خطای ناشناخته در اعمال قفل");
       setFeedback({ type: "error", message: "خطای ناشناخته در اعمال قفل" });
-    } finally {
-      setActionLoading(false);
     }
   };
 
@@ -126,49 +127,52 @@ export default function AdminBookingActionCenterView({
   const handleIssueProforma = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!invoiceNumber.trim()) {
+      toast.error("لطفاً شماره پیش‌فاکتور را وارد فرمایید.");
       setFeedback({ type: "error", message: "لطفاً شماره پیش‌فاکتور را وارد فرمایید." });
       return;
     }
-    setActionLoading(true);
     try {
-      const res = await issueProformaInvoice(bookingId, {
-        invoiceNumber: invoiceNumber.trim(),
-        amount: Number(invoiceAmount) || booking?.totalPrice || 0,
-        fileUrl: invoiceFileUrl.trim() || undefined,
+      const res = await proformaMutation.mutateAsync({
+        bookingId,
+        payload: {
+          invoiceNumber: invoiceNumber.trim(),
+          amount: Number(invoiceAmount) || booking?.totalPrice || 0,
+          fileUrl: invoiceFileUrl.trim() || undefined,
+        },
       });
-      if (res.success && res.data) {
-        setBooking(res.data);
+      if (res.success) {
+        toast.success(res.message || "پیش‌فاکتور رسمی با موفقیت صادر شد.");
         setFeedback({ type: "success", message: res.message || "پیش‌فاکتور رسمی با موفقیت صادر شد." });
         setProformaModalOpen(false);
-        fetchData();
       } else {
+        toast.error(res.message || "خطا در صدور پیش‌فاکتور");
         setFeedback({ type: "error", message: res.message || "خطا در صدور پیش‌فاکتور" });
       }
     } catch {
+      toast.error("خطای ارتباط با سرور در صدور پیش‌فاکتور");
       setFeedback({ type: "error", message: "خطای ارتباط با سرور در صدور پیش‌فاکتور" });
-    } finally {
-      setActionLoading(false);
     }
   };
 
   // عملیات: تایید نهایی پرداخت و اکران
   const handleApprovePayment = async (e: React.FormEvent) => {
     e.preventDefault();
-    setActionLoading(true);
     try {
-      const res = await approvePaymentAndBroadcast(bookingId, financialApprovalNote.trim());
-      if (res.success && res.data) {
-        setBooking(res.data);
+      const res = await approvePaymentMutation.mutateAsync({
+        bookingId,
+        approvalNote: financialApprovalNote.trim(),
+      });
+      if (res.success) {
+        toast.success(res.message || "پرداخت تایید شد و مجوز اکران صادر گردید.");
         setFeedback({ type: "success", message: res.message || "پرداخت تایید شد و مجوز اکران صادر گردید." });
         setApprovePaymentModalOpen(false);
-        fetchData();
       } else {
+        toast.error(res.message || "خطا در تایید مالی پرداخت");
         setFeedback({ type: "error", message: res.message || "خطا در تایید مالی پرداخت" });
       }
     } catch {
+      toast.error("خطای ارتباط با سرور در تایید پرداخت");
       setFeedback({ type: "error", message: "خطای ارتباط با سرور در تایید پرداخت" });
-    } finally {
-      setActionLoading(false);
     }
   };
 
@@ -176,24 +180,26 @@ export default function AdminBookingActionCenterView({
   const handleReject = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!rejectionReason.trim()) {
+      toast.error("ذکر علت رد درخواست رزرو الزامی است.");
       setFeedback({ type: "error", message: "ذکر علت رد درخواست رزرو الزامی است." });
       return;
     }
-    setActionLoading(true);
     try {
-      const res = await rejectBookingRequest(bookingId, rejectionReason.trim());
-      if (res.success && res.data) {
-        setBooking(res.data);
+      const res = await rejectMutation.mutateAsync({
+        bookingId,
+        reason: rejectionReason.trim(),
+      });
+      if (res.success) {
+        toast.success(res.message || "درخواست رزرو رد شد و در سوابق ذخیره گردید.");
         setFeedback({ type: "success", message: res.message || "درخواست رزرو رد شد و در سوابق ذخیره گردید." });
         setRejectModalOpen(false);
-        fetchData();
       } else {
+        toast.error(res.message || "خطا در ثبت رد درخواست");
         setFeedback({ type: "error", message: res.message || "خطا در ثبت رد درخواست" });
       }
     } catch {
+      toast.error("خطای سرور در رد درخواست");
       setFeedback({ type: "error", message: "خطای سرور در رد درخواست" });
-    } finally {
-      setActionLoading(false);
     }
   };
 
@@ -201,29 +207,28 @@ export default function AdminBookingActionCenterView({
   const handleTransition = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newStatusValue) {
+      toast.error("لطفاً وضعیت مقصد را انتخاب فرمایید.");
       setFeedback({ type: "error", message: "لطفاً وضعیت مقصد را انتخاب فرمایید." });
       return;
     }
-    setActionLoading(true);
     try {
-      const res = await transitionBookingState(
+      const res = await transitionMutation.mutateAsync({
         bookingId,
-        newStatusValue,
-        newStatusLabel || undefined,
-        transitionNote.trim() || undefined
-      );
-      if (res.success && res.data) {
-        setBooking(res.data);
+        status: newStatusValue,
+        statusLabel: newStatusLabel || undefined,
+        note: transitionNote.trim() || undefined,
+      });
+      if (res.success) {
+        toast.success(res.message || "وضعیت پرونده با موفقیت تغییر یافت.");
         setFeedback({ type: "success", message: res.message || "وضعیت پرونده با موفقیت تغییر یافت." });
         setTransitionModalOpen(false);
-        fetchData();
       } else {
+        toast.error(res.message || "خطا در تغییر وضعیت پرونده");
         setFeedback({ type: "error", message: res.message || "خطا در تغییر وضعیت پرونده" });
       }
     } catch {
+      toast.error("خطای سرور در تغییر وضعیت");
       setFeedback({ type: "error", message: "خطای سرور در تغییر وضعیت" });
-    } finally {
-      setActionLoading(false);
     }
   };
 
@@ -328,6 +333,17 @@ export default function AdminBookingActionCenterView({
         </div>
 
         <div className="flex items-center gap-2">
+          {/* دکمه به‌روزرسانی زنده */}
+          <button
+            type="button"
+            onClick={fetchData}
+            className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+            title="تازه‌سازی اطلاعات"
+          >
+            <RefreshCw className="h-4 w-4 text-slate-500" />
+            <span>تازه‌سازی</span>
+          </button>
+
           {/* دکمه تغییر وضعیت دستی */}
           <button
             type="button"
@@ -414,7 +430,7 @@ export default function AdminBookingActionCenterView({
             {/* ۲. دکمه صدور و آپلود پیش‌فاکتور */}
             <button
               type="button"
-              onClick={() => setProformaModalOpen(true)}
+              onClick={handleOpenProformaModal}
               className="flex-1 lg:flex-none flex items-center justify-center gap-2 rounded-xl bg-indigo-500 px-4 py-3 text-xs font-black text-white shadow-sm hover:bg-indigo-400 transition-all hover:scale-102"
             >
               <FileText className="h-4 w-4" />

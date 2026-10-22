@@ -3,12 +3,14 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { toast } from "sonner";
 import {
   ArrowRight,
   MapPin,
   Clock,
   CheckCircle2,
-  AlertCircle,
   FileText,
   CreditCard,
   Download,
@@ -18,28 +20,41 @@ import {
   Building2,
   Upload,
   Loader2,
-  ChevronLeft,
   FileCheck,
   AlertTriangle,
 } from "lucide-react";
-import {
-  ClientBooking,
-  PaymentSubmissionInput,
-} from "@/types/client-dashboard";
-import {
-  fetchClientBookingById,
-  fetchProformaDownloadToken,
-  submitBookingPayment,
-} from "@/lib/client-api";
+import { fetchProformaDownloadToken } from "@/lib/client-api";
 import { formatToman, toPersianDigits } from "@/lib/mock-data";
+import {
+  useClientBookingDetailQuery,
+  useSubmitPaymentMutation,
+} from "@/features/bookings/hooks/useBookings";
+import {
+  paymentSubmissionSchema,
+  PaymentSubmissionFormValues,
+} from "@/features/bookings/schemas/booking.schema";
+import { Button } from "@/shared/components/ui/button";
+import { Badge } from "@/shared/components/ui/badge";
+import { Input } from "@/shared/components/ui/input";
+import { Textarea } from "@/shared/components/ui/textarea";
 
 interface BookingDetailViewProps {
   bookingId: string;
 }
 
+const statusBadgeColors: Record<string, string> = {
+  amber: "bg-amber-50 text-amber-700 border-amber-200",
+  indigo: "bg-indigo-50 text-indigo-700 border-indigo-200",
+  emerald: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  rose: "bg-rose-50 text-rose-700 border-rose-200",
+  slate: "bg-slate-50 text-slate-700 border-slate-200",
+  blue: "bg-blue-50 text-blue-700 border-blue-200",
+};
+
 export default function BookingDetailView({ bookingId }: BookingDetailViewProps) {
-  const [booking, setBooking] = useState<ClientBooking | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { data: booking, isLoading: loading, refetch } = useClientBookingDetailQuery(bookingId);
+  const submitPaymentMutation = useSubmitPaymentMutation();
+
   const [copiedCode, setCopiedCode] = useState(false);
 
   // وضعیت دانلود امن با توکن ۱۵ دقیقه‌ای
@@ -52,41 +67,42 @@ export default function BookingDetailView({ bookingId }: BookingDetailViewProps)
     secondsLeft: number;
   } | null>(null);
 
-  // فرم ثبت پرداخت
-  const [paymentMethod, setPaymentMethod] = useState<"satna" | "sayad_check">("satna");
-  const [paymentAmount, setPaymentAmount] = useState<number>(0);
-  const [bankName, setBankName] = useState("");
-  const [trackingCode, setTrackingCode] = useState("");
-  const [checkSerial, setCheckSerial] = useState("");
-  const [checkSayadId, setCheckSayadId] = useState("");
-  const [dueDate, setDueDate] = useState("۱۴۰۳/۰۲/۱۵");
-  const [notes, setNotes] = useState("");
+  // فایل پیوست انتخابی
   const [fileName, setFileName] = useState<string | null>(null);
 
-  const [paymentErrors, setPaymentErrors] = useState<Record<string, string>>({});
-  const [paymentSubmitting, setPaymentSubmitting] = useState(false);
-  const [paymentSuccessToast, setPaymentSuccessToast] = useState<string | null>(null);
+  // فرم ثبت پرداخت با React Hook Form و Zod
+  const {
+    register,
+    handleSubmit,
+    watch,
+    setValue,
+    reset,
+    formState: { errors, isSubmitting },
+  } = useForm<PaymentSubmissionFormValues>({
+    resolver: zodResolver(paymentSubmissionSchema),
+    defaultValues: {
+      bookingId,
+      method: "satna",
+      amount: booking?.totalPrice || 0,
+      bankName: "",
+      trackingCode: "",
+      checkSerial: "",
+      checkSayadId: "",
+      dueDate: "۱۴۰۳/۰۲/۱۵",
+      notes: "",
+    },
+  });
 
-  // بارگذاری اطلاعات رزرو
+  // هماهنگ‌سازی مقدار پیش‌فرض مبلغ هنگامی که رزرو بارگذاری شد
   useEffect(() => {
-    let isMounted = true;
+    if (booking?.totalPrice) {
+      setValue("amount", booking.totalPrice);
+      setValue("bookingId", booking.id);
+    }
+  }, [booking, setValue]);
 
-    fetchClientBookingById(bookingId)
-      .then((data) => {
-        if (isMounted && data) {
-          setBooking(data);
-          setPaymentAmount(data.totalPrice);
-        }
-      })
-      .catch((err) => console.error("Error loading booking details:", err))
-      .finally(() => {
-        if (isMounted) setLoading(false);
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [bookingId]);
+  const currentMethod = watch("method");
+  const watchAmount = watch("amount");
 
   // شمارشگر معکوس ۱۵ دقیقه برای لینک امن
   useEffect(() => {
@@ -100,110 +116,77 @@ export default function BookingDetailView({ bookingId }: BookingDetailViewProps)
         };
       });
     }, 1000);
+
     return () => clearInterval(interval);
   }, [secureTokenData]);
 
-  const handleCopyTracking = () => {
-    if (!booking) return;
-    navigator.clipboard.writeText(booking.trackingCode);
-    setCopiedCode(true);
-    setTimeout(() => setCopiedCode(false), 2000);
-  };
-
-  // دریافت لینک امن دانلود
+  // دریافت توکن ۱۵ دقیقه‌ای برای دانلود پیش‌فاکتور یا قرارداد
   const handleSecureDownload = async (docId: string) => {
     setDownloadingDocId(docId);
     try {
-      const res = await fetchProformaDownloadToken(docId);
+      const data = await fetchProformaDownloadToken(docId);
       setSecureTokenData({
         docId,
-        token: res.secureToken,
-        expiresAt: res.expiresAt,
-        downloadUrl: res.downloadUrl,
-        secondsLeft: res.expiresInSeconds || 900,
+        token: data.secureToken,
+        expiresAt: data.expiresAt,
+        downloadUrl: data.downloadUrl,
+        secondsLeft: data.expiresInSeconds,
       });
-    } catch (err) {
-      console.error("Error generating secure token:", err);
+      toast.success("لینک امن دانلود با اعتبار ۱۵ دقیقه صادر گردید.");
+    } catch {
+      toast.error("خطا در ایجاد لینک دانلود امن سند.");
     } finally {
       setDownloadingDocId(null);
     }
   };
 
-  // اعتبارسنجی فرم پرداخت
-  const validatePayment = () => {
-    const errs: Record<string, string> = {};
-    if (!paymentAmount || paymentAmount <= 0) {
-      errs.amount = "مبلغ پرداختی را وارد نمایید.";
-    }
-
-    if (paymentMethod === "satna") {
-      if (!trackingCode.trim()) {
-        errs.trackingCode = "شماره پیگیری یا ارجاع فیش بانکی الزامی است.";
-      }
-      if (!bankName.trim()) {
-        errs.bankName = "نام بانک مبدا را مشخص کنید.";
-      }
-    } else {
-      const cleanSayad = checkSayadId.replace(/\s/g, "");
-      if (!cleanSayad || cleanSayad.length < 12) {
-        errs.checkSayadId = "شناسه ۱۶ رقمی صیادی چک را به صورت کامل وارد کنید.";
-      }
-      if (!bankName.trim()) {
-        errs.bankName = "نام بانک صادرکننده چک الزامی است.";
-      }
-      if (!dueDate.trim()) {
-        errs.dueDate = "تاریخ سررسید چک الزامی است.";
-      }
-    }
-
-    setPaymentErrors(errs);
-    return Object.keys(errs).length === 0;
+  const copyTracking = () => {
+    if (!booking) return;
+    navigator.clipboard.writeText(booking.trackingCode);
+    setCopiedCode(true);
+    toast.info("کد پیگیری کپی شد");
+    setTimeout(() => setCopiedCode(false), 2000);
   };
 
-  // ارسال فرم پرداخت به POST /api/v1/client/bookings/{booking}/payment
-  const handleSubmitPayment = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!validatePayment() || !booking) return;
-
-    setPaymentSubmitting(true);
-    setPaymentErrors({});
-
+  // ارسال فرم پرداخت با TanStack Query mutation و Zod
+  const onSubmitPayment = async (data: PaymentSubmissionFormValues) => {
     try {
-      const input: PaymentSubmissionInput = {
-        bookingId: booking.id,
-        method: paymentMethod,
-        amount: paymentAmount,
-        bankName: bankName.trim(),
-        trackingCode: trackingCode.trim(),
-        checkSerial: checkSerial.trim(),
-        checkSayadId: checkSayadId.trim(),
-        dueDate: dueDate.trim(),
-        receiptFileName: fileName || `${paymentMethod}-receipt.pdf`,
-        notes: notes.trim(),
-      };
+      await submitPaymentMutation.mutateAsync({
+        bookingId: data.bookingId,
+        method: data.method,
+        amount: data.amount,
+        bankName: data.bankName?.trim() || "",
+        trackingCode: data.trackingCode?.trim() || "",
+        checkSerial: data.checkSerial?.trim() || "",
+        checkSayadId: data.checkSayadId?.trim() || "",
+        dueDate: data.dueDate?.trim() || "",
+        receiptFileName: fileName || `${data.method}-receipt.pdf`,
+        notes: data.notes?.trim() || "",
+      });
 
-      const res = await submitBookingPayment(input);
-      if (res.data) {
-        setBooking(res.data);
-      }
-
-      setPaymentSuccessToast("سند پرداخت با موفقیت ثبت شد و فاکتور به امور مالی جهت تایید ارسال گردید.");
-      // پاکسازی فرم
-      setTrackingCode("");
-      setCheckSayadId("");
-      setCheckSerial("");
+      toast.success("سند پرداخت با موفقیت ثبت شد و فاکتور به امور مالی جهت تایید ارسال گردید.");
+      refetch();
+      reset({
+        bookingId,
+        method: "satna",
+        amount: booking?.totalPrice || 0,
+        bankName: "",
+        trackingCode: "",
+        checkSerial: "",
+        checkSayadId: "",
+        dueDate: "۱۴۰۳/۰۲/۱۵",
+        notes: "",
+      });
       setFileName(null);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "خطا در ثبت پرداخت.";
-      setPaymentErrors({ form: msg });
-    } finally {
-      setPaymentSubmitting(false);
+      toast.error(msg);
     }
   };
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[400px] gap-3 text-slate-500">
+      <div className="flex flex-col items-center justify-center min-h-100 gap-3 text-slate-500">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
         <span className="text-xs font-bold">در حال فراخوانی اطلاعات قرارداد و گردش کار...</span>
       </div>
@@ -218,235 +201,211 @@ export default function BookingDetailView({ bookingId }: BookingDetailViewProps)
         <p className="text-xs text-muted-foreground">شناسه یا کد پیگیری وارد شده در سیستم ثبت نشده است.</p>
         <Link
           href="/client/bookings"
-          className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-xs font-bold text-white shadow-xs"
+          className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-primary/90"
         >
-          <ArrowRight className="h-3.5 w-3.5" />
-          <span>بازگشت به لیست رزروهای من</span>
+          <ArrowRight className="h-4 w-4" />
+          <span>بازگشت به فهرست رزروها</span>
         </Link>
       </div>
     );
   }
 
-  const isAwaiting = booking.status.value === "awaiting_payment";
+  const badgeStyle = statusBadgeColors[booking.status.color] || statusBadgeColors.slate;
 
   return (
-    <div className="space-y-6">
-      {/* پیام تست موفقیت پرداخت */}
-      {paymentSuccessToast && (
-        <div className="rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-xs font-bold text-emerald-900 flex items-center justify-between shadow-xs animate-in slide-in-from-top-2">
+    <div className="space-y-6 pb-12">
+      {/* هدر صفحه و دکمه بازگشت */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-border pb-4">
+        <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
-            <span>{paymentSuccessToast}</span>
+            <Link
+              href="/client/bookings"
+              className="inline-flex items-center gap-1 text-xs font-bold text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <ArrowRight className="h-4 w-4" />
+              <span>فهرست رزروها</span>
+            </Link>
+            <span className="text-muted-foreground/60">/</span>
+            <span className="text-xs font-bold text-foreground">جزئیات پرونده {booking.trackingCode}</span>
           </div>
-          <button
+          <div className="flex flex-wrap items-center gap-3 pt-1">
+            <h1 className="text-lg font-black text-foreground">
+              پرونده رزرو سازه تبلیغاتی: {booking.structure.title}
+            </h1>
+            <Badge variant="outline" className={`text-xs px-2.5 py-0.5 font-bold ${badgeStyle}`}>
+              {booking.status.label}
+            </Badge>
+          </div>
+        </div>
+
+        {/* کد پیگیری و دکمه کپی */}
+        <div className="flex items-center gap-2 bg-slate-50 border border-border rounded-xl px-3 py-2">
+          <span className="text-[11px] text-muted-foreground">کد پیگیری:</span>
+          <span className="font-mono text-xs font-black text-slate-800 tracking-wider">
+            {booking.trackingCode}
+          </span>
+          <Button
             type="button"
-            onClick={() => setPaymentSuccessToast(null)}
-            className="text-emerald-700 hover:text-emerald-950 font-bold"
+            variant="ghost"
+            size="icon"
+            onClick={copyTracking}
+            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+            title="کپی کد پیگیری"
           >
-            ✕
-          </button>
+            {copiedCode ? (
+              <Check className="h-3.5 w-3.5 text-emerald-600" />
+            ) : (
+              <Copy className="h-3.5 w-3.5" />
+            )}
+          </Button>
+        </div>
+      </div>
+
+      {/* بنر لینک دانلود امن فعال (۱۵ دقیقه اعتبار) */}
+      {secureTokenData && (
+        <div className="rounded-2xl border border-indigo-200 bg-indigo-50/70 p-4 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-xs">
+              <ShieldCheck className="h-5 w-5" />
+            </div>
+            <div>
+              <h4 className="text-xs font-bold text-indigo-950">
+                لینک امن دانلود پیش‌فاکتور صادر گردید (اعتبار محدود ۱۵ دقیقه‌ای)
+              </h4>
+              <p className="text-[11px] text-indigo-700 mt-0.5">
+                زمان باقی‌مانده تا ابطال توکن امنیتی:{" "}
+                <span className="font-mono font-bold text-indigo-900">
+                  {Math.floor(secureTokenData.secondsLeft / 60)}:
+                  {(secureTokenData.secondsLeft % 60).toString().padStart(2, "0")}
+                </span>
+              </p>
+            </div>
+          </div>
+
+          <a
+            href={secureTokenData.downloadUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-indigo-700 transition-colors"
+          >
+            <Download className="h-4 w-4" />
+            <span>دانلود فوری فایل PDF رسمی</span>
+          </a>
         </div>
       )}
 
-      {/* نوار بردکرامب و بازگشت */}
-      <div className="flex items-center justify-between pb-2 border-b border-border text-xs">
-        <nav className="flex items-center gap-1.5 text-muted-foreground">
-          <Link href="/client/bookings" className="hover:text-primary transition-colors">
-            رزروهای من
-          </Link>
-          <ChevronLeft className="h-3.5 w-3.5" />
-          <span className="font-bold text-foreground font-mono">{booking.trackingCode}</span>
-        </nav>
-
-        <Link
-          href="/client/bookings"
-          className="inline-flex items-center gap-1 font-bold text-primary hover:underline"
-        >
-          <ArrowRight className="h-3.5 w-3.5" />
-          <span>بازگشت به جدول رزروها</span>
-        </Link>
-      </div>
-
-      {/* کارت سربرگ مشخصات سازه و وضعیت */}
-      <div className="rounded-2xl border border-border bg-white p-5 sm:p-6 shadow-2xs space-y-4">
-        <div className="flex flex-col md:flex-row gap-5 items-start md:items-center justify-between">
-          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center min-w-0">
-            {/* عکس سازه */}
-            <div className="relative h-28 w-full sm:w-44 shrink-0 overflow-hidden rounded-xl bg-slate-100">
-              <Image
-                src={booking.structure.image}
-                alt={booking.structure.title}
-                fill
-                sizes="176px"
-                className="object-cover"
-              />
-              <span className="absolute bottom-2 right-2 rounded-md bg-black/70 px-2 py-0.5 text-[10px] font-bold text-white">
-                {booking.structure.type}
-              </span>
-            </div>
-
-            <div className="space-y-1.5 min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-mono text-xs font-bold text-slate-800 bg-slate-100 px-2.5 py-0.5 rounded-md flex items-center gap-1">
-                  <span>{booking.trackingCode}</span>
-                  <button
-                    type="button"
-                    onClick={handleCopyTracking}
-                    title="کپی کد رهگیری"
-                    className="hover:text-primary"
-                  >
-                    {copiedCode ? (
-                      <Check className="h-3 w-3 text-emerald-600" />
-                    ) : (
-                      <Copy className="h-3 w-3 text-muted-foreground" />
-                    )}
-                  </button>
-                </span>
-
-                <span
-                  className={`inline-flex items-center gap-1 rounded-full px-3 py-0.5 text-xs font-bold ${
-                    isAwaiting
-                      ? "bg-indigo-100 text-indigo-800 border border-indigo-200"
-                      : "bg-emerald-100 text-emerald-800"
-                  }`}
-                >
-                  {isAwaiting && <span className="h-1.5 w-1.5 rounded-full bg-indigo-600 animate-ping" />}
-                  <span>{booking.status.label}</span>
-                </span>
-              </div>
-
-              <h2 className="text-lg sm:text-xl font-black text-foreground">
-                {booking.structure.title}
-              </h2>
-
-              <p className="flex items-center gap-1 text-xs text-muted-foreground">
-                <MapPin className="h-3.5 w-3.5 text-primary shrink-0" />
-                <span>{booking.structure.address}</span>
-              </p>
-
-              <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600 pt-1">
-                <span className="bg-slate-100 px-2 py-0.5 rounded font-medium">
-                  {booking.structure.dimensions}
-                </span>
-                <span>•</span>
-                <span>برند: <strong>{booking.brandName}</strong></span>
-                <span>•</span>
-                <span>متقاضی: {booking.contactPerson} ({booking.contactPhone})</span>
-              </div>
-            </div>
-          </div>
-
-          {/* باکس مبلغ و مهلت */}
-          <div className="w-full md:w-auto bg-slate-50 p-4 rounded-xl border border-border text-right md:text-left shrink-0">
-            <span className="block text-[11px] text-muted-foreground">مبلغ نهایی قرارداد:</span>
-            <span className="text-xl sm:text-2xl font-black text-foreground font-sans">
-              {formatToman(booking.totalPrice)}
-            </span>
-            <div className="text-[11px] text-primary font-bold mt-1">
-              دوره: {booking.startDate} تا {booking.endDate} ({toPersianDigits(booking.durationDays)} روز)
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* چیدمان دو ستونه: سمت راست (گردش کار و اسناد) و سمت چپ (فرم ثبت پرداخت) */}
+      {/* گرید دو ستونه: اطلاعات و اسناد + فرم پرداخت */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        
-        {/* ستون راست (۷ ستون): تایم‌لاین گردش کار + بخش اسناد و پیش‌فاکتور */}
+        {/* ستون راست (۷ ستون): اطلاعات سازه، وضعیت قرارداد و اسناد */}
         <div className="lg:col-span-7 space-y-6">
-          
-          {/* گردش کار و تغییر وضعیت‌ها (Status Workflow Timeline Logs) */}
+          {/* کارت مشخصات سازه */}
+          <div className="rounded-2xl border border-border bg-white p-5 shadow-2xs space-y-4">
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="relative h-28 w-full sm:w-40 rounded-xl overflow-hidden bg-slate-100 shrink-0">
+                <Image
+                  src={booking.structure.image}
+                  alt={booking.structure.title}
+                  fill
+                  className="object-cover"
+                />
+                <span className="absolute top-2 right-2 rounded-md bg-black/60 backdrop-blur-xs px-2 py-0.5 text-[10px] font-bold text-white">
+                  کد: {booking.structure.code}
+                </span>
+              </div>
+
+              <div className="flex-1 space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <h3 className="text-sm font-bold text-foreground">
+                    {booking.structure.title}
+                  </h3>
+                  <span className="text-xs font-black text-primary shrink-0">
+                    {formatToman(booking.totalPrice)}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <MapPin className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                  <span className="truncate">{booking.structure.address}</span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100 text-[11px]">
+                  <div>
+                    <span className="text-muted-foreground">بازه اکران:</span>{" "}
+                    <span className="font-bold text-foreground">
+                      {booking.startDate} تا {booking.endDate}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">طول دوره:</span>{" "}
+                    <span className="font-bold text-foreground">
+                      {toPersianDigits(booking.durationDays)} روز اکران
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* تایم‌لاین گردش کار رزرو */}
           <div className="rounded-2xl border border-border bg-white p-5 shadow-2xs space-y-4">
             <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
               <Clock className="h-4 w-4 text-primary" />
-              <span>گردش کار و تاریخچه وضعیت قرارداد (Timeline Logs)</span>
+              <span>گردش کار و تاریخچه وضعیت پرونده</span>
             </h3>
 
-            <div className="relative pr-6 space-y-6 before:absolute before:right-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200">
-              {booking.timeline.map((item) => (
-                <div key={item.id} className="relative group">
-                  {/* دایره وضعیت روی خط تایم‌لاین */}
+            <div className="relative pr-4 border-r-2 border-slate-200 space-y-4">
+              {booking.timeline.map((step) => (
+                <div key={step.id} className="relative">
+                  {/* دایره وضعیت */}
                   <div
-                    className={`absolute -right-6 top-0.5 flex h-5 w-5 items-center justify-center rounded-full ring-4 ring-white ${
-                      item.isDone
-                        ? item.isCurrent
-                          ? "bg-indigo-600 text-white shadow-xs"
-                          : "bg-emerald-600 text-white"
-                        : "bg-slate-300 text-slate-600"
+                    className={`absolute -right-5.75 top-0.5 flex h-4 w-4 items-center justify-center rounded-full border-2 bg-white ${
+                      step.isDone
+                        ? "border-emerald-500 text-emerald-500"
+                        : "border-slate-300 text-transparent"
                     }`}
                   >
-                    {item.isDone ? (
-                      <Check className="h-3 w-3 stroke-3" />
-                    ) : (
-                      <span className="h-1.5 w-1.5 rounded-full bg-white" />
-                    )}
+                    <div
+                      className={`h-1.5 w-1.5 rounded-full ${
+                        step.isDone ? "bg-emerald-500" : "bg-transparent"
+                      }`}
+                    />
                   </div>
 
-                  <div className="space-y-1">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <h4 className="text-xs font-bold text-foreground">
-                        {item.title}
-                      </h4>
-                      <span className="text-[10px] text-muted-foreground font-mono bg-slate-100 px-2 py-0.5 rounded">
-                        {item.timestamp}
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-foreground">
+                        {step.title}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground font-mono">
+                        {step.timestamp}
                       </span>
                     </div>
-
-                    <p className="text-xs text-muted-foreground leading-relaxed">
-                      {item.description}
-                    </p>
-
-                    <div className="text-[10px] text-slate-500 font-medium">
-                      اقدام‌کننده: {item.actor}
-                    </div>
+                    {step.description && (
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        {step.description}
+                      </p>
+                    )}
                   </div>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* بخش اسناد، پیش‌فاکتور و دانلود با توکن امن ۱۵ دقیقه‌ای */}
-          <div className="rounded-2xl border border-border bg-white p-5 shadow-2xs space-y-4">
+          {/* پیش‌فاکتور و اسناد رسمی با دکمه‌های دریافت لینک امن ۱۵ دقیقه‌ای */}
+          <div className="rounded-2xl border border-border bg-white p-5 shadow-2xs space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
                 <FileText className="h-4 w-4 text-primary" />
-                <span>اسناد و پیش‌فاکتورهای رسمی صادره</span>
+                <span>اسناد، پیش‌فاکتورها و فرم‌های قانونی</span>
               </h3>
               <span className="text-[11px] text-muted-foreground">
-                {toPersianDigits(booking.documents.length)} سند پیوست
+                لینک‌های دانلود دارای توکن امنیتی موقت هستند
               </span>
             </div>
 
-            {/* بنر اطلاع‌رسانی توکن فعال ۱۵ دقیقه‌ای در صورت تولید */}
-            {secureTokenData && (
-              <div className="rounded-xl border border-indigo-200 bg-indigo-50/80 p-3.5 space-y-2 text-xs text-indigo-950 animate-in fade-in">
-                <div className="flex items-center justify-between font-bold">
-                  <span className="flex items-center gap-1.5">
-                    <ShieldCheck className="h-4 w-4 text-indigo-600" />
-                    توکن امن دانلود فعال است
-                  </span>
-                  <span className="font-mono text-indigo-700 bg-white px-2 py-0.5 rounded-md border border-indigo-200">
-                    زمان باقی‌مانده: {toPersianDigits(Math.floor(secureTokenData.secondsLeft / 60))}:
-                    {toPersianDigits((secureTokenData.secondsLeft % 60).toString().padStart(2, "0"))}
-                  </span>
-                </div>
-                <p className="text-[11px] text-indigo-800 leading-relaxed">
-                  لینک دانلود اختصاصی با توکن رمزنگاری‌شده صادر شد. روی دکمه زیر کلیک نمایید.
-                </p>
-                <a
-                  href={secureTokenData.downloadUrl}
-                  download
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-indigo-700"
-                >
-                  <Download className="h-3.5 w-3.5" />
-                  <span>دانلود مستقیم پیش‌فاکتور (PDF)</span>
-                </a>
-              </div>
-            )}
-
             {booking.documents.length === 0 ? (
-              <div className="text-center py-6 text-xs text-muted-foreground bg-slate-50 rounded-xl">
-                هنوز سندی برای این رزرو صادر نشده است. پس از تایید اولیه، پیش‌فاکتور بارگذاری می‌شود.
+              <div className="p-4 text-center text-xs text-muted-foreground border border-dashed border-slate-200 rounded-xl">
+                هنوز سندی از سوی واحد بازرگانی صادر نگردیده است.
               </div>
             ) : (
               <div className="space-y-2.5">
@@ -474,11 +433,13 @@ export default function BookingDetailView({ bookingId }: BookingDetailViewProps)
                       </div>
                     </div>
 
-                    <button
+                    <Button
                       type="button"
+                      variant="outline"
+                      size="sm"
                       disabled={downloadingDocId === doc.id}
                       onClick={() => handleSecureDownload(doc.id)}
-                      className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-white border border-border px-3.5 py-2 text-xs font-bold text-slate-800 shadow-2xs hover:bg-slate-100 hover:border-primary/50 transition-all disabled:opacity-50"
+                      className="gap-1.5 text-xs font-bold text-slate-800"
                     >
                       {downloadingDocId === doc.id ? (
                         <>
@@ -491,7 +452,7 @@ export default function BookingDetailView({ bookingId }: BookingDetailViewProps)
                           <span>دریافت لینک امن ۱۵ دقیقه‌ای</span>
                         </>
                       )}
-                    </button>
+                    </Button>
                   </div>
                 ))}
               </div>
@@ -529,10 +490,9 @@ export default function BookingDetailView({ bookingId }: BookingDetailViewProps)
               </div>
             </div>
           )}
-
         </div>
 
-        {/* ستون چپ (۵ ستون): فرم بارگذاری و ثبت پرداخت (POST /api/v1/client/bookings/{booking}/payment) */}
+        {/* ستون چپ (۵ ستون): فرم بارگذاری و ثبت پرداخت با Zod و TanStack Query */}
         <div className="lg:col-span-5" id="payment">
           <div className="rounded-2xl border border-border bg-white p-5 shadow-md space-y-4 sticky top-20">
             <div className="border-b border-border pb-3">
@@ -545,15 +505,7 @@ export default function BookingDetailView({ bookingId }: BookingDetailViewProps)
               </p>
             </div>
 
-            {/* خطای فرم */}
-            {paymentErrors.form && (
-              <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700 flex items-start gap-2">
-                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                <span>{paymentErrors.form}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleSubmitPayment} className="space-y-4">
+            <form onSubmit={handleSubmit(onSubmitPayment)} className="space-y-4">
               {/* انتخاب روش پرداخت: ساتنا یا چک صیادی */}
               <div>
                 <label className="block text-xs font-bold text-foreground mb-1.5">
@@ -562,9 +514,9 @@ export default function BookingDetailView({ bookingId }: BookingDetailViewProps)
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    onClick={() => setPaymentMethod("satna")}
-                    className={`flex items-center justify-center gap-1.5 rounded-xl p-2.5 text-xs font-bold border transition-all ${
-                      paymentMethod === "satna"
+                    onClick={() => setValue("method", "satna")}
+                    className={`flex items-center justify-center gap-1.5 rounded-xl p-2.5 text-xs font-bold border transition-all cursor-pointer ${
+                      currentMethod === "satna"
                         ? "bg-indigo-50 border-indigo-500 text-indigo-900 shadow-xs"
                         : "bg-slate-50 border-border text-slate-700 hover:bg-slate-100"
                     }`}
@@ -575,9 +527,9 @@ export default function BookingDetailView({ bookingId }: BookingDetailViewProps)
 
                   <button
                     type="button"
-                    onClick={() => setPaymentMethod("sayad_check")}
-                    className={`flex items-center justify-center gap-1.5 rounded-xl p-2.5 text-xs font-bold border transition-all ${
-                      paymentMethod === "sayad_check"
+                    onClick={() => setValue("method", "sayad_check")}
+                    className={`flex items-center justify-center gap-1.5 rounded-xl p-2.5 text-xs font-bold border transition-all cursor-pointer ${
+                      currentMethod === "sayad_check"
                         ? "bg-indigo-50 border-indigo-500 text-indigo-900 shadow-xs"
                         : "bg-slate-50 border-border text-slate-700 hover:bg-slate-100"
                     }`}
@@ -586,6 +538,9 @@ export default function BookingDetailView({ bookingId }: BookingDetailViewProps)
                     <span>چک صیادی بنفش</span>
                   </button>
                 </div>
+                {errors.method && (
+                  <p className="text-[11px] text-rose-600 mt-1">{errors.method.message}</p>
+                )}
               </div>
 
               {/* مبلغ پرداختی */}
@@ -593,34 +548,36 @@ export default function BookingDetailView({ bookingId }: BookingDetailViewProps)
                 <label className="block text-xs font-bold text-foreground mb-1">
                   مبلغ به تومان: <span className="text-rose-500">*</span>
                 </label>
-                <input
+                <Input
                   type="number"
-                  value={paymentAmount}
-                  onChange={(e) => setPaymentAmount(Number(e.target.value))}
-                  className="w-full rounded-xl border border-border bg-slate-50 px-3 py-2.5 text-xs text-foreground focus:border-indigo-600 focus:bg-white focus:outline-none"
+                  {...register("amount", { valueAsNumber: true })}
+                  placeholder="مبلغ پرداختی..."
+                  className="text-xs"
                 />
                 <div className="text-[11px] text-muted-foreground mt-1">
-                  معادل: {formatToman(paymentAmount)}
+                  معادل: {formatToman(watchAmount || 0)}
                 </div>
+                {errors.amount && (
+                  <p className="text-[11px] text-rose-600 mt-1">{errors.amount.message}</p>
+                )}
               </div>
 
               {/* فیلدهای اختصاصی ساتنا */}
-              {paymentMethod === "satna" && (
+              {currentMethod === "satna" && (
                 <>
                   <div>
                     <label className="block text-xs font-bold text-foreground mb-1">
                       شماره پیگیری / ارجاع حواله ساتنا: <span className="text-rose-500">*</span>
                     </label>
-                    <input
+                    <Input
                       type="text"
                       dir="ltr"
-                      value={trackingCode}
-                      onChange={(e) => setTrackingCode(e.target.value)}
+                      {...register("trackingCode")}
                       placeholder="SAT-140301-XXXX"
-                      className="w-full rounded-xl border border-border bg-slate-50 px-3 py-2.5 text-xs text-foreground font-mono focus:border-indigo-600 focus:bg-white focus:outline-none text-left"
+                      className="font-mono text-left text-xs"
                     />
-                    {paymentErrors.trackingCode && (
-                      <p className="text-[11px] text-rose-600 mt-1">{paymentErrors.trackingCode}</p>
+                    {errors.trackingCode && (
+                      <p className="text-[11px] text-rose-600 mt-1">{errors.trackingCode.message}</p>
                     )}
                   </div>
 
@@ -628,38 +585,36 @@ export default function BookingDetailView({ bookingId }: BookingDetailViewProps)
                     <label className="block text-xs font-bold text-foreground mb-1">
                       نام بانک مبدا واریزکننده: <span className="text-rose-500">*</span>
                     </label>
-                    <input
+                    <Input
                       type="text"
-                      value={bankName}
-                      onChange={(e) => setBankName(e.target.value)}
+                      {...register("bankName")}
                       placeholder="مثلاً: بانک ملت، سامان، پاسارگاد..."
-                      className="w-full rounded-xl border border-border bg-slate-50 px-3 py-2.5 text-xs text-foreground focus:border-indigo-600 focus:bg-white focus:outline-none"
+                      className="text-xs"
                     />
-                    {paymentErrors.bankName && (
-                      <p className="text-[11px] text-rose-600 mt-1">{paymentErrors.bankName}</p>
+                    {errors.bankName && (
+                      <p className="text-[11px] text-rose-600 mt-1">{errors.bankName.message}</p>
                     )}
                   </div>
                 </>
               )}
 
               {/* فیلدهای اختصاصی چک صیادی */}
-              {paymentMethod === "sayad_check" && (
+              {currentMethod === "sayad_check" && (
                 <>
                   <div>
                     <label className="block text-xs font-bold text-foreground mb-1">
                       شناسه ۱۶ رقمی چک صیادی (کد صیاد): <span className="text-rose-500">*</span>
                     </label>
-                    <input
+                    <Input
                       type="text"
                       dir="ltr"
                       maxLength={16}
-                      value={checkSayadId}
-                      onChange={(e) => setCheckSayadId(e.target.value)}
+                      {...register("checkSayadId")}
                       placeholder="1234567890123456"
-                      className="w-full rounded-xl border border-border bg-slate-50 px-3 py-2.5 text-xs text-foreground font-mono focus:border-indigo-600 focus:bg-white focus:outline-none text-left tracking-wider"
+                      className="font-mono text-left tracking-wider text-xs"
                     />
-                    {paymentErrors.checkSayadId && (
-                      <p className="text-[11px] text-rose-600 mt-1">{paymentErrors.checkSayadId}</p>
+                    {errors.checkSayadId && (
+                      <p className="text-[11px] text-rose-600 mt-1">{errors.checkSayadId.message}</p>
                     )}
                   </div>
 
@@ -668,25 +623,26 @@ export default function BookingDetailView({ bookingId }: BookingDetailViewProps)
                       <label className="block text-[11px] font-bold text-foreground mb-1">
                         سریال چک:
                       </label>
-                      <input
+                      <Input
                         type="text"
-                        value={checkSerial}
-                        onChange={(e) => setCheckSerial(e.target.value)}
+                        {...register("checkSerial")}
                         placeholder="۱۲۳۴۵۶/الف"
-                        className="w-full rounded-xl border border-border bg-slate-50 px-3 py-2 text-xs text-foreground focus:border-indigo-600 focus:bg-white focus:outline-none"
+                        className="text-xs"
                       />
                     </div>
                     <div>
                       <label className="block text-[11px] font-bold text-foreground mb-1">
                         سررسید چک: <span className="text-rose-500">*</span>
                       </label>
-                      <input
+                      <Input
                         type="text"
-                        value={dueDate}
-                        onChange={(e) => setDueDate(e.target.value)}
+                        {...register("dueDate")}
                         placeholder="۱۴۰۳/۰۲/۱۵"
-                        className="w-full rounded-xl border border-border bg-slate-50 px-3 py-2 text-xs text-foreground focus:border-indigo-600 focus:bg-white focus:outline-none"
+                        className="text-xs"
                       />
+                      {errors.dueDate && (
+                        <p className="text-[11px] text-rose-600 mt-1">{errors.dueDate.message}</p>
+                      )}
                     </div>
                   </div>
 
@@ -694,13 +650,15 @@ export default function BookingDetailView({ bookingId }: BookingDetailViewProps)
                     <label className="block text-xs font-bold text-foreground mb-1">
                       بانک صادرکننده: <span className="text-rose-500">*</span>
                     </label>
-                    <input
+                    <Input
                       type="text"
-                      value={bankName}
-                      onChange={(e) => setBankName(e.target.value)}
+                      {...register("bankName")}
                       placeholder="مثلاً: بانک صادرات، تجارت، ملی..."
-                      className="w-full rounded-xl border border-border bg-slate-50 px-3 py-2.5 text-xs text-foreground focus:border-indigo-600 focus:bg-white focus:outline-none"
+                      className="text-xs"
                     />
+                    {errors.bankName && (
+                      <p className="text-[11px] text-rose-600 mt-1">{errors.bankName.message}</p>
+                    )}
                   </div>
                 </>
               )}
@@ -746,22 +704,21 @@ export default function BookingDetailView({ bookingId }: BookingDetailViewProps)
                 <label className="block text-xs font-bold text-foreground mb-1">
                   توضیحات و یادداشت مالی:
                 </label>
-                <textarea
+                <Textarea
                   rows={2}
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
+                  {...register("notes")}
                   placeholder="در صورت واریز چندمرحله‌ای یا شماره پیگیری دوم بنویسید..."
-                  className="w-full rounded-xl border border-border bg-slate-50 p-2.5 text-xs text-foreground focus:border-indigo-600 focus:bg-white focus:outline-none resize-none"
+                  className="text-xs resize-none"
                 />
               </div>
 
               {/* دکمه ارسال پرداخت */}
-              <button
+              <Button
                 type="submit"
-                disabled={paymentSubmitting}
-                className="w-full flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-xs font-black text-white shadow-md hover:bg-indigo-700 transition-all disabled:opacity-50 cursor-pointer"
+                disabled={isSubmitting || submitPaymentMutation.isPending}
+                className="w-full h-11 bg-indigo-600 hover:bg-indigo-700 text-white font-bold gap-2 text-xs cursor-pointer"
               >
-                {paymentSubmitting ? (
+                {isSubmitting || submitPaymentMutation.isPending ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
                     <span>در حال بارگذاری و ثبت سند...</span>
@@ -772,11 +729,10 @@ export default function BookingDetailView({ bookingId }: BookingDetailViewProps)
                     <span>تایید و ارسال سند پرداخت برای واحد مالی</span>
                   </>
                 )}
-              </button>
+              </Button>
             </form>
           </div>
         </div>
-
       </div>
     </div>
   );

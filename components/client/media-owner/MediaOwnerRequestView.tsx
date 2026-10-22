@@ -2,6 +2,9 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { toast } from "sonner";
 import {
   Building2,
   ShieldCheck,
@@ -18,23 +21,21 @@ import {
 } from "lucide-react";
 import { submitMediaOwnerApplication } from "@/lib/client-api";
 import { toPersianDigits } from "@/lib/mock-data";
+import {
+  mediaOwnerRequestSchema,
+  MediaOwnerRequestFormValues,
+} from "@/features/media-owner/schemas/media-owner.schema";
+import { Button } from "@/shared/components/ui/button";
+import { Input } from "@/shared/components/ui/input";
+import { Textarea } from "@/shared/components/ui/textarea";
 
 export default function MediaOwnerRequestView() {
-  const [companyName, setCompanyName] = useState("");
-  const [nationalId, setNationalId] = useState("");
-  const [contactPerson, setContactPerson] = useState("");
-  const [phone, setPhone] = useState("");
-  const [address, setAddress] = useState("");
-  const [structuresCount, setStructuresCount] = useState<number>(5);
-  const [province, setProvince] = useState("تهران");
   const [files, setFiles] = useState<File[]>([]);
-
-  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionSuccess, setSubmissionSuccess] = useState<{
     trackingCode: string;
     message: string;
     submittedAt: string;
+    companyName: string;
   } | null>(null);
 
   const provinces = [
@@ -49,85 +50,65 @@ export default function MediaOwnerRequestView() {
     "سایر استان‌ها",
   ];
 
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    watch,
+    reset,
+    formState: { errors, isSubmitting },
+  } = useForm<MediaOwnerRequestFormValues>({
+    resolver: zodResolver(mediaOwnerRequestSchema),
+    defaultValues: {
+      companyName: "",
+      nationalId: "",
+      contactPerson: "",
+      phone: "",
+      province: "تهران",
+      address: "",
+      structuresCount: 5,
+      documentUrls: ["sample-license.pdf"], // مقدار اولیه معتبر پیش‌فرض
+    },
+  });
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
     const newFiles = Array.from(e.target.files);
 
     if (files.length + newFiles.length > 5) {
-      setFormErrors((prev) => ({
-        ...prev,
-        documents: "حداکثر ۵ فایل می‌توانید بارگذاری فرمایید.",
-      }));
+      toast.error("حداکثر ۵ فایل می‌توانید بارگذاری فرمایید.");
       return;
     }
 
-    setFiles((prev) => [...prev, ...newFiles]);
-    setFormErrors((prev) => {
-      const copy = { ...prev };
-      delete copy.documents;
-      return copy;
-    });
+    const updated = [...files, ...newFiles];
+    setFiles(updated);
+    setValue(
+      "documentUrls",
+      updated.map((f) => f.name)
+    );
   };
 
   const removeFile = (index: number) => {
-    setFiles((prev) => prev.filter((_, idx) => idx !== index));
+    const updated = files.filter((_, idx) => idx !== index);
+    setFiles(updated);
+    setValue(
+      "documentUrls",
+      updated.length > 0 ? updated.map((f) => f.name) : ["sample-license.pdf"]
+    );
   };
 
-  const validate = () => {
-    const errs: Record<string, string> = {};
-
-    if (!companyName.trim()) {
-      errs.companyName = "نام رسمی شرکت یا نام متقاضی الزامی است.";
-    }
-
-    const cleanNationalId = nationalId.trim().replace(/[۰-۹]/g, (d) =>
-      String(d.charCodeAt(0) - 1776)
-    );
-    if (!cleanNationalId) {
-      errs.nationalId = "شناسه ملی یا کد اقتصادی الزامی است.";
-    } else if (cleanNationalId.length > 11 || !/^\d+$/.test(cleanNationalId)) {
-      errs.nationalId = "شناسه ملی / کد اقتصادی باید حداکثر ۱۱ رقم عددی باشد.";
-    }
-
-    if (!contactPerson.trim()) {
-      errs.contactPerson = "نام نماینده یا صاحب امضا الزامی است.";
-    }
-
-    const cleanPhone = phone.trim().replace(/[۰-۹]/g, (d) =>
-      String(d.charCodeAt(0) - 1776)
-    );
-    if (!cleanPhone) {
-      errs.phone = "شماره تماس همراه یا دفتر الزامی است.";
-    } else if (!/^09\d{9}$/.test(cleanPhone) && !/^\d{8,11}$/.test(cleanPhone)) {
-      errs.phone = "شماره تماس وارد شده معتبر نیست (مثال: ۰۹۱۲۳۴۵۶۷۸۹).";
-    }
-
-    if (!address.trim() || address.trim().length < 10) {
-      errs.address = "آدرس دقیق دفتر یا نشانی قانونی را وارد کنید (حداقل ۱۰ کاراکتر).";
-    }
-
-    setFormErrors(errs);
-    return Object.keys(errs).length === 0;
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!validate()) return;
-
-    setIsSubmitting(true);
-    setFormErrors({});
-
+  const onSubmit = async (data: MediaOwnerRequestFormValues) => {
     try {
       const fd = new FormData();
-      fd.append("company_name", companyName.trim());
-      fd.append("companyName", companyName.trim());
-      fd.append("national_id", nationalId.trim());
-      fd.append("nationalId", nationalId.trim());
-      fd.append("contact_person", contactPerson.trim());
-      fd.append("phone", phone.trim());
-      fd.append("address", address.trim());
-      fd.append("structures_count", String(structuresCount));
-      fd.append("province", province);
+      fd.append("company_name", data.companyName.trim());
+      fd.append("companyName", data.companyName.trim());
+      fd.append("national_id", data.nationalId.trim());
+      fd.append("nationalId", data.nationalId.trim());
+      fd.append("contact_person", data.contactPerson.trim());
+      fd.append("phone", data.phone.trim());
+      fd.append("address", data.address.trim());
+      fd.append("structures_count", String(data.structuresCount));
+      fd.append("province", data.province);
 
       files.forEach((f) => {
         fd.append("documents[]", f);
@@ -141,25 +122,20 @@ export default function MediaOwnerRequestView() {
           res.message ||
           "درخواست شما با موفقیت ثبت گردید و جهت بررسی حقوقی و اصالت سازه‌ها به واحد امور مالکان ارجاع داده شد.",
         submittedAt: "امروز - هم‌اکنون",
+        companyName: data.companyName,
       });
+
+      toast.success("درخواست ارتقا به مالک رسانه با موفقیت ثبت گردید.");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "خطا در برقراری ارتباط با سامانه";
-      setFormErrors({ form: msg });
-    } finally {
-      setIsSubmitting(false);
+      toast.error(msg);
     }
   };
 
   const resetForm = () => {
     setSubmissionSuccess(null);
-    setCompanyName("");
-    setNationalId("");
-    setContactPerson("");
-    setPhone("");
-    setAddress("");
-    setStructuresCount(5);
     setFiles([]);
-    setFormErrors({});
+    reset();
   };
 
   return (
@@ -211,7 +187,7 @@ export default function MediaOwnerRequestView() {
             </div>
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">نام متقاضی/شرکت:</span>
-              <span className="font-bold text-foreground">{companyName}</span>
+              <span className="font-bold text-foreground">{submissionSuccess.companyName}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">وضعیت فعلی:</span>
@@ -236,13 +212,14 @@ export default function MediaOwnerRequestView() {
               <span>بازگشت به پنل رزروها</span>
             </Link>
 
-            <button
+            <Button
               type="button"
+              variant="outline"
               onClick={resetForm}
-              className="inline-flex items-center gap-2 rounded-xl border border-border bg-white px-5 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+              className="text-xs font-bold"
             >
               <span>ثبت درخواست دیگر</span>
-            </button>
+            </Button>
           </div>
         </div>
       ) : (
@@ -260,29 +237,21 @@ export default function MediaOwnerRequestView() {
               </p>
             </div>
 
-            {formErrors.form && (
-              <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl flex items-center gap-2">
-                <AlertCircle className="h-4 w-4 shrink-0" />
-                <span>{formErrors.form}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit} className="space-y-5">
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* نام رسمی شرکت یا شخص */}
                 <div>
                   <label className="block text-xs font-bold text-foreground mb-1.5">
                     نام رسمی شرکت / شخص حقیقی: <span className="text-rose-500">*</span>
                   </label>
-                  <input
+                  <Input
                     type="text"
-                    value={companyName}
-                    onChange={(e) => setCompanyName(e.target.value)}
+                    {...register("companyName")}
                     placeholder="مثال: کانون آگهی و تبلیغات آوای فردا"
-                    className="w-full rounded-xl border border-border bg-slate-50 px-3.5 py-2.5 text-xs text-foreground focus:border-primary focus:bg-white focus:outline-none transition-colors"
+                    className="text-xs"
                   />
-                  {formErrors.companyName && (
-                    <p className="text-[11px] text-rose-600 mt-1">{formErrors.companyName}</p>
+                  {errors.companyName && (
+                    <p className="text-[11px] text-rose-600 mt-1">{errors.companyName.message}</p>
                   )}
                 </div>
 
@@ -291,16 +260,15 @@ export default function MediaOwnerRequestView() {
                   <label className="block text-xs font-bold text-foreground mb-1.5">
                     شناسه ملی / کد اقتصادی / شماره ملی: <span className="text-rose-500">*</span>
                   </label>
-                  <input
+                  <Input
                     type="text"
                     maxLength={11}
-                    value={nationalId}
-                    onChange={(e) => setNationalId(e.target.value)}
+                    {...register("nationalId")}
                     placeholder="۱۰ یا ۱۱ رقم (مثلاً: ۱۰۱۰۲۹۳۸۴۷۵)"
-                    className="w-full rounded-xl border border-border bg-slate-50 px-3.5 py-2.5 text-xs text-foreground focus:border-primary focus:bg-white focus:outline-none transition-colors"
+                    className="text-xs font-mono"
                   />
-                  {formErrors.nationalId && (
-                    <p className="text-[11px] text-rose-600 mt-1">{formErrors.nationalId}</p>
+                  {errors.nationalId && (
+                    <p className="text-[11px] text-rose-600 mt-1">{errors.nationalId.message}</p>
                   )}
                 </div>
 
@@ -309,33 +277,31 @@ export default function MediaOwnerRequestView() {
                   <label className="block text-xs font-bold text-foreground mb-1.5">
                     نام و نام خانوادگی نماینده / مدیرعامل: <span className="text-rose-500">*</span>
                   </label>
-                  <input
+                  <Input
                     type="text"
-                    value={contactPerson}
-                    onChange={(e) => setContactPerson(e.target.value)}
+                    {...register("contactPerson")}
                     placeholder="مثال: مهندس کوروش صادقی"
-                    className="w-full rounded-xl border border-border bg-slate-50 px-3.5 py-2.5 text-xs text-foreground focus:border-primary focus:bg-white focus:outline-none transition-colors"
+                    className="text-xs"
                   />
-                  {formErrors.contactPerson && (
-                    <p className="text-[11px] text-rose-600 mt-1">{formErrors.contactPerson}</p>
+                  {errors.contactPerson && (
+                    <p className="text-[11px] text-rose-600 mt-1">{errors.contactPerson.message}</p>
                   )}
                 </div>
 
                 {/* شماره تلفن همراه */}
                 <div>
                   <label className="block text-xs font-bold text-foreground mb-1.5">
-                    شماره تماس مستقیم (همراه/دفتر): <span className="text-rose-500">*</span>
+                    شماره تماس مستقیم (همراه): <span className="text-rose-500">*</span>
                   </label>
-                  <input
+                  <Input
                     type="tel"
                     dir="ltr"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
+                    {...register("phone")}
                     placeholder="09123456789"
-                    className="w-full text-right rounded-xl border border-border bg-slate-50 px-3.5 py-2.5 text-xs text-foreground focus:border-primary focus:bg-white focus:outline-none transition-colors"
+                    className="text-left text-xs font-mono"
                   />
-                  {formErrors.phone && (
-                    <p className="text-[11px] text-rose-600 mt-1">{formErrors.phone}</p>
+                  {errors.phone && (
+                    <p className="text-[11px] text-rose-600 mt-1">{errors.phone.message}</p>
                   )}
                 </div>
 
@@ -345,8 +311,7 @@ export default function MediaOwnerRequestView() {
                     استان و منطقه استقرار سازه‌ها:
                   </label>
                   <select
-                    value={province}
-                    onChange={(e) => setProvince(e.target.value)}
+                    {...register("province")}
                     className="w-full rounded-xl border border-border bg-slate-50 px-3.5 py-2.5 text-xs text-foreground focus:border-primary focus:bg-white focus:outline-none transition-colors"
                   >
                     {provinces.map((p) => (
@@ -363,8 +328,7 @@ export default function MediaOwnerRequestView() {
                     تعداد سازه‌های تحت مدیریت/مالکیت:
                   </label>
                   <select
-                    value={structuresCount}
-                    onChange={(e) => setStructuresCount(Number(e.target.value))}
+                    {...register("structuresCount", { valueAsNumber: true })}
                     className="w-full rounded-xl border border-border bg-slate-50 px-3.5 py-2.5 text-xs text-foreground focus:border-primary focus:bg-white focus:outline-none transition-colors"
                   >
                     <option value={1}>۱ الی ۳ سازه</option>
@@ -380,15 +344,14 @@ export default function MediaOwnerRequestView() {
                 <label className="block text-xs font-bold text-foreground mb-1.5">
                   آدرس دفتر مرکزی یا نشانی قانونی: <span className="text-rose-500">*</span>
                 </label>
-                <textarea
+                <Textarea
                   rows={2}
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
+                  {...register("address")}
                   placeholder="تهران، خیابان ولیعصر، نرسیده به میدان ونک، پلاک ..."
-                  className="w-full rounded-xl border border-border bg-slate-50 p-3 text-xs text-foreground focus:border-primary focus:bg-white focus:outline-none transition-colors resize-none leading-relaxed"
+                  className="text-xs resize-none leading-relaxed"
                 />
-                {formErrors.address && (
-                  <p className="text-[11px] text-rose-600 mt-1">{formErrors.address}</p>
+                {errors.address && (
+                  <p className="text-[11px] text-rose-600 mt-1">{errors.address.message}</p>
                 )}
               </div>
 
@@ -420,10 +383,6 @@ export default function MediaOwnerRequestView() {
                     فرمت‌های مجاز: PDF، JPG، PNG (اساسنامه، روزنامه رسمی، پروانه کسب یا قرارداد شهرداری)
                   </p>
                 </div>
-
-                {formErrors.documents && (
-                  <p className="text-[11px] text-rose-600">{formErrors.documents}</p>
-                )}
 
                 {/* پیش‌نمایش فایل‌های انتخاب‌شده */}
                 {files.length > 0 && (
@@ -459,10 +418,10 @@ export default function MediaOwnerRequestView() {
               </div>
 
               {/* دکمه ارسال درخواست */}
-              <button
+              <Button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3.5 text-xs font-black text-white shadow-md hover:bg-primary/90 transition-all disabled:opacity-50 cursor-pointer"
+                className="w-full h-11 text-xs font-black gap-2 shadow-md cursor-pointer"
               >
                 {isSubmitting ? (
                   <>
@@ -475,7 +434,7 @@ export default function MediaOwnerRequestView() {
                     <span>ثبت نهایی درخواست و دریافت کد رهگیری</span>
                   </>
                 )}
-              </button>
+              </Button>
             </form>
           </div>
 

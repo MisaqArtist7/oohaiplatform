@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { Vazirmatn } from "next/font/google";
 import localFont from "next/font/local";
 import "./globals.css";
+import QueryProvider from "@/shared/providers/QueryProvider";
 
 const vazirmatn = Vazirmatn({
   subsets: ["arabic", "latin"],
@@ -47,7 +48,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="fa" dir="rtl" className={`${vazirmatn.variable} ${iranyekan.variable}`}>
       <body className={`${vazirmatn.className} antialiased bg-background text-foreground`}>
-        {children}
+        <QueryProvider>{children}</QueryProvider>
       </body>
     </html>
   );

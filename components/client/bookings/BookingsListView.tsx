@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -24,13 +24,11 @@ import {
   ShieldAlert,
 } from "lucide-react";
 import { ClientBooking } from "@/types/client-dashboard";
-import { fetchClientBookings, fetchProformaDownloadToken } from "@/lib/client-api";
+import { fetchProformaDownloadToken } from "@/lib/client-api";
 import { formatToman, toPersianDigits } from "@/lib/mock-data";
+import { useClientBookingsQuery } from "@/features/bookings/hooks/useBookings";
 
 export default function BookingsListView() {
-  const [bookings, setBookings] = useState<ClientBooking[]>([]);
-  const [counts, setCounts] = useState<Record<string, number>>({});
-  const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
@@ -51,25 +49,10 @@ export default function BookingsListView() {
     loading: false,
   });
 
-  const loadBookings = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetchClientBookings(statusFilter, searchQuery);
-      setBookings(res.bookings);
-      setCounts(res.counts);
-    } catch (err) {
-      console.error("Error loading client bookings:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [statusFilter, searchQuery]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      loadBookings();
-    }, 200);
-    return () => clearTimeout(timer);
-  }, [loadBookings]);
+  // دریافت اطلاعات رزروها از TanStack Query همراه با کش و تازه‌سازی هوشمند
+  const { data, isLoading: loading } = useClientBookingsQuery(statusFilter, searchQuery);
+  const bookings = data?.bookings || [];
+  const counts = data?.counts || {};
 
   const handleCopy = (code: string) => {
     navigator.clipboard.writeText(code);
