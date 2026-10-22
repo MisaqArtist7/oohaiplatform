@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { MapPin, Sparkles, LayoutGrid, User, Menu, X, Building2, ShieldAlert } from "lucide-react";
+import { MapPin, Sparkles, User, Menu, X, Building2, ShieldAlert, CalendarCheck } from "lucide-react";
 
 interface UserSession {
   id?: number | string;
@@ -35,7 +35,7 @@ export default function Header() {
       isMounted = false;
     };
   }, []);
-
+  
   // بررسی دسترسی سوپر ادمین
   const userPermissions = (user?.permissions && Array.isArray(user.permissions)) ? user.permissions : [];
   const userRoles = (user?.roles && Array.isArray(user.roles)) ? user.roles : [];
@@ -80,21 +80,21 @@ export default function Header() {
               کاوشگر نقشه
             </Link>
             <Link
-              href="/structures"
+              href="/client/bookings"
               className="flex items-center gap-1.5 transition-colors hover:text-primary"
             >
-              <LayoutGrid className="h-4 w-4" />
-              کاتالوگ سازه‌ها
+              <CalendarCheck className="h-4 w-4 text-primary" />
+              رزروهای من
             </Link>
             <Link
-              href="/ai-advisor"
+              href="/client/proposals"
               className="flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-primary transition-all hover:bg-primary/20"
             >
               <Sparkles className="h-4 w-4" />
               مشاور هوشمند کمپین (AI)
             </Link>
             <Link
-              href="/media-owner"
+              href="/client/media-owner-request"
               className="flex items-center gap-1.5 transition-colors hover:text-primary"
             >
               <Building2 className="h-4 w-4" />
@@ -155,15 +155,15 @@ export default function Header() {
             کاوشگر نقشه
           </Link>
           <Link
-            href="/structures"
+            href="/client/bookings"
             onClick={() => setMobileMenuOpen(false)}
             className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-foreground hover:bg-muted"
           >
-            <LayoutGrid className="h-4 w-4 text-primary" />
-            کاتالوگ سازه‌ها
+            <CalendarCheck className="h-4 w-4 text-primary" />
+            رزروهای من
           </Link>
           <Link
-            href="/ai-advisor"
+            href="/client/proposals"
             onClick={() => setMobileMenuOpen(false)}
             className="flex items-center gap-2 rounded-lg bg-primary/10 px-3 py-2 text-sm font-semibold text-primary"
           >
@@ -171,12 +171,12 @@ export default function Header() {
             مشاور هوشمند کمپین (AI)
           </Link>
           <Link
-            href="/media-owner"
+            href="/client/media-owner-request"
             onClick={() => setMobileMenuOpen(false)}
             className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-foreground hover:bg-muted"
           >
             <Building2 className="h-4 w-4 text-primary" />
-            پنل مالکان رسانه
+            ثبت رسانه (مالکان)
           </Link>
           <div className="pt-2 border-t border-border">
             {loading ? (

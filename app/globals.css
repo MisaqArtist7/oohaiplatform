@@ -17,7 +17,7 @@
 }
 
 @theme inline {
-  --font-sans: var(--font-iranyekan); 
+  --font-sans: var(--font-vazirmatn), var(--font-iranyekan), "Vazirmatn", "IRANYekan", Tahoma, Arial, sans-serif; 
   
   --color-background: var(--background);
   --color-foreground: var(--foreground);

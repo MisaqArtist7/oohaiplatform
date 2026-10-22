@@ -21,6 +21,8 @@ import {
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "https://oohaiplatform.ir/api/v1";
 
+export const instant = false;
+
 async function logoutAction() {
   "use server";
   const store = await cookies();
