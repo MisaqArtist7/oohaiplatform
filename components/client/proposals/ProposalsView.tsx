@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -20,7 +20,7 @@ import {
   ChevronLeft,
 } from "lucide-react";
 import { ProposalItem } from "@/types/client-dashboard";
-import { fetchProposalById } from "@/lib/client-api";
+import { fetchProposalById, fetchLocations, LocationCity } from "@/lib/client-api";
 import { formatToman, toPersianDigits } from "@/lib/mock-data";
 import {
   useProposalsQuery,
@@ -46,13 +46,19 @@ export default function ProposalsView() {
   const [selectedProposal, setSelectedProposal] = useState<ProposalItem | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
 
-  const cities = [
-    { id: 1, name: "تهران" },
-    { id: 2, name: "مشهد" },
-    { id: 3, name: "اصفهان" },
-    { id: 4, name: "شیراز" },
-    { id: 5, name: "تبریز" },
-  ];
+  const [cities, setCities] = useState<LocationCity[]>([]);
+
+  useEffect(() => {
+    let isMounted = true;
+    fetchLocations().then((list) => {
+      if (isMounted && list && list.length > 0) {
+        setCities(list);
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const budgetPresets = [
     { label: "۱۵۰ میلیون", value: 150000000 },

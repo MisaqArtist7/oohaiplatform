@@ -189,3 +189,25 @@ export async function submitMediaOwnerApplication(
   }
   return json;
 }
+
+export interface LocationCity {
+  id: number;
+  name: string;
+  province?: string;
+  slug?: string;
+}
+
+export async function fetchLocations(): Promise<LocationCity[]> {
+  try {
+    const res = await fetch("/api/v1/locations", {
+      cache: "no-store",
+    });
+    if (!res.ok) throw new Error("Failed to fetch locations");
+    const json = await res.json();
+    return json.data || [];
+  } catch (error) {
+    console.warn("Failed to fetch locations:", error);
+    return [];
+  }
+}
+

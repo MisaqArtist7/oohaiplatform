@@ -19,19 +19,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import LogoutButton from "@/components/common/LogoutButton";
-
-const CITIES = [
-  { id: 1, name: "تهران" },
-  { id: 2, name: "مشهد" },
-  { id: 3, name: "اصفهان" },
-  { id: 4, name: "شیراز" },
-  { id: 5, name: "کرج" },
-  { id: 6, name: "تبریز" },
-  { id: 7, name: "اهواز" },
-  { id: 8, name: "قم" },
-  { id: 9, name: "رشت" },
-  { id: 10, name: "کرمانشاه" },
-];
+import { fetchLocations, LocationCity } from "@/lib/client-api";
 
 export default function SmartProposalsPage() {
   const router = useRouter();
@@ -39,6 +27,35 @@ export default function SmartProposalsPage() {
   const [cityId, setCityId] = useState<number | string>(1);
   const [isCustomCity, setIsCustomCity] = useState<boolean>(false);
   const [scenario, setScenario] = useState<string>("");
+
+  // دریافت لیست شهرها از API /api/v1/locations با توکن احراز هویت
+  const [cities, setCities] = useState<LocationCity[]>([]);
+  const [loadingCities, setLoadingCities] = useState<boolean>(true);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadCities() {
+      setLoadingCities(true);
+      try {
+        const list = await fetchLocations();
+        if (isMounted && list && list.length > 0) {
+          setCities(list);
+          setCityId((prev) => {
+            const exists = list.some((c) => String(c.id) === String(prev));
+            return exists ? prev : list[0].id;
+          });
+        }
+      } catch (err) {
+        console.warn("Error loading cities from API:", err);
+      } finally {
+        if (isMounted) setLoadingCities(false);
+      }
+    }
+    loadCities();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // هدایت مالکان رسانه به پنل اختصاصی
   useEffect(() => {
@@ -123,6 +140,9 @@ export default function SmartProposalsPage() {
     setIsSubmitting(true);
 
     try {
+      const selectedCity = cities.find((c) => String(c.id) === String(numCityId));
+      const cityName = selectedCity?.name || (isCustomCity ? `شهر ${numCityId}` : "تهران");
+
       const res = await fetch("/api/v1/proposals", {
         method: "POST",
         headers: {
@@ -132,6 +152,7 @@ export default function SmartProposalsPage() {
         body: JSON.stringify({
           budget: numBudget,
           city_id: numCityId,
+          cityName,
           scenario: trimmedScenario,
         }),
       });
@@ -424,21 +445,36 @@ export default function SmartProposalsPage() {
                       <select
                         id="city_id"
                         value={cityId}
+                        disabled={loadingCities}
                         onChange={(e) => setCityId(Number(e.target.value))}
-                        className="w-full rounded-xl border border-border bg-background py-2.5 pr-10 pl-3.5 text-sm text-foreground transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                        className="w-full rounded-xl border border-border bg-background py-2.5 pr-10 pl-3.5 text-sm text-foreground transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-60 cursor-pointer"
                         required
                       >
-                        {CITIES.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.name} (کد: {c.id})
-                          </option>
-                        ))}
+                        {loadingCities ? (
+                          <option value="">در حال دریافت لیست شهرها از سرور...</option>
+                        ) : cities.length === 0 ? (
+                          <option value="">هیچ شهری یافت نشد</option>
+                        ) : (
+                          cities.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name} {c.province ? `(استان ${c.province})` : ""} - کد: {c.id}
+                            </option>
+                          ))
+                        )}
                       </select>
                     )}
                   </div>
-                  <p className="text-[11px] text-muted-foreground">
-                    شناسه شهر به صورت عدد صحیح ارسال می‌شود. (کد جاری: {cityId})
-                  </p>
+                  <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                    <span>
+                      شناسه شهر به صورت عدد صحیح ارسال می‌شود. (کد جاری: {cityId})
+                    </span>
+                    {loadingCities && (
+                      <span className="inline-flex items-center gap-1 text-primary">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        <span>در حال دریافت شهرها...</span>
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {/* فیلد ۳: scenario */}
