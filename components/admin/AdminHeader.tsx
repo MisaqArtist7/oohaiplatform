@@ -8,6 +8,7 @@ import {
   ExternalLink,
   Lock,
 } from "lucide-react";
+import LogoutButton from "@/components/common/LogoutButton";
 
 interface AdminHeaderProps {
   onOpenMobileMenu: () => void;
@@ -96,6 +97,9 @@ export default function AdminHeader({
             مدیریت
           </span>
         </div>
+
+        {/* دکمه خروج سریع */}
+        <LogoutButton variant="icon" label="خروج از پنل مدیریت" />
       </div>
     </header>
   );

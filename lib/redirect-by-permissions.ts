@@ -21,7 +21,20 @@ export function getRedirectPath(
     return "/dashboard/superadmin";
   }
 
-  // ۱. بررسی مجوزهای صریح
+  // ۱. بررسی دسترسی یا نقش مالک رسانه (Media Owner)
+  const isMediaOwner =
+    permissions.some((p) =>
+      ["media-owner", "media_owner", "mediaowner", "dashboard.media-owner", "dashboard.media_owner", "structures.manage"].includes(p.toLowerCase())
+    ) ||
+    roleNames.some((r) =>
+      ["media-owner", "media_owner", "mediaowner"].includes(r.toLowerCase())
+    );
+
+  if (isMediaOwner) {
+    return "/media-owner/structures";
+  }
+
+  // ۲. بررسی مجوزهای صریح
   if (permissions.includes("dashboard.admin")) {
     return "/admin";
   }
@@ -38,15 +51,11 @@ export function getRedirectPath(
     return "/dashboard/ai-proposal";
   }
 
-  // ۲. بررسی نقش‌ها (در صورت خالی بودن یا ناقص بودن دسترسی‌ها)
+  // ۳. بررسی نقش‌ها (در صورت خالی بودن یا ناقص بودن دسترسی‌ها)
   if (roleNames.includes("admin")) {
     return "/admin";
   }
 
-  if (roleNames.includes("media-owner")) {
-    return "/media-owner";
-  }
-
-  // ۳. برای کاربران عادی که ثبت‌نام کرده‌اند و احراز شده‌اند
+  // ۴. برای کاربران عادی که ثبت‌نام کرده‌اند و احراز شده‌اند
   return "/dashboard";
 }

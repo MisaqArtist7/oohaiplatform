@@ -55,11 +55,42 @@ export async function POST(
       );
     }
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       data: updated,
       message: "درخواست احراز هویت شرکت با موفقیت تایید شد و دسترسی ثبت سازه فعال گردید.",
     });
+
+    const userCookie = store.get("user")?.value;
+    if (userCookie) {
+      try {
+        const currentUser = JSON.parse(userCookie);
+        if (
+          (updated.phone && currentUser.phone === updated.phone) ||
+          (updated.contactPerson && currentUser.name === updated.contactPerson) ||
+          (updated.nationalId && currentUser.nationalCode === updated.nationalId)
+        ) {
+          const roles = Array.isArray(currentUser.roles) ? currentUser.roles : [];
+          const roleStrings = roles.map((r: unknown) =>
+            typeof r === "string"
+              ? r
+              : (r as { name?: string; slug?: string })?.name || (r as { name?: string; slug?: string })?.slug
+          );
+          if (!roleStrings.includes("media-owner")) {
+            currentUser.roles = [...roles, "media-owner"];
+            response.cookies.set("user", JSON.stringify(currentUser), {
+              httpOnly: true,
+              secure: process.env.NODE_ENV === "production",
+              sameSite: "lax",
+              path: "/",
+              maxAge: 60 * 60 * 24 * 7,
+            });
+          }
+        }
+      } catch {}
+    }
+
+    return response;
   } catch (err) {
     console.error("Error in approve media owner request:", err);
     return NextResponse.json(

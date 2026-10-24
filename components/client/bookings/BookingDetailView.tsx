@@ -40,6 +40,7 @@ import { Textarea } from "@/shared/components/ui/textarea";
 
 interface BookingDetailViewProps {
   bookingId: string;
+  backUrl?: string;
 }
 
 const statusBadgeColors: Record<string, string> = {
@@ -51,7 +52,10 @@ const statusBadgeColors: Record<string, string> = {
   blue: "bg-blue-50 text-blue-700 border-blue-200",
 };
 
-export default function BookingDetailView({ bookingId }: BookingDetailViewProps) {
+export default function BookingDetailView({
+  bookingId,
+  backUrl = "/dashboard/bookings",
+}: BookingDetailViewProps) {
   const { data: booking, isLoading: loading, refetch } = useClientBookingDetailQuery(bookingId);
   const submitPaymentMutation = useSubmitPaymentMutation();
 
@@ -200,7 +204,7 @@ export default function BookingDetailView({ bookingId }: BookingDetailViewProps)
         <h3 className="text-base font-bold text-foreground">قرارداد یا رزرو مورد نظر یافت نشد</h3>
         <p className="text-xs text-muted-foreground">شناسه یا کد پیگیری وارد شده در سیستم ثبت نشده است.</p>
         <Link
-          href="/client/bookings"
+          href={backUrl}
           className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-primary/90"
         >
           <ArrowRight className="h-4 w-4" />
@@ -219,7 +223,7 @@ export default function BookingDetailView({ bookingId }: BookingDetailViewProps)
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <Link
-              href="/client/bookings"
+              href={backUrl}
               className="inline-flex items-center gap-1 text-xs font-bold text-muted-foreground hover:text-foreground transition-colors"
             >
               <ArrowRight className="h-4 w-4" />

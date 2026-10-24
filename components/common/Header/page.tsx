@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { MapPin, Sparkles, User, Menu, X, Building2, ShieldAlert, CalendarCheck } from "lucide-react";
+import LogoutButton from "@/components/common/LogoutButton";
 
 interface UserSession {
   id?: number | string;
@@ -49,7 +50,19 @@ export default function Header() {
       ["superadmin", "super-admin", "super_admin"].includes(r?.toLowerCase() ?? "")
     );
 
-  const dashboardUrl = isSuperAdmin ? "/dashboard/superadmin" : "/dashboard";
+  const isMediaOwner =
+    userPermissions.some((p: string) =>
+      ["media-owner", "media_owner", "mediaowner", "dashboard.media-owner", "dashboard.media_owner", "structures.manage"].includes(p.toLowerCase())
+    ) ||
+    roleNames.some((r) =>
+      ["media-owner", "media_owner", "mediaowner"].includes(r?.toLowerCase() ?? "")
+    );
+
+  const dashboardUrl = isSuperAdmin
+    ? "/dashboard/superadmin"
+    : isMediaOwner
+    ? "/media-owner/structures"
+    : "/dashboard";
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border bg-background/85 backdrop-blur-md">
@@ -115,12 +128,19 @@ export default function Header() {
           {loading ? (
             <div className="h-10 w-28 rounded-xl bg-muted/60 animate-pulse" />
           ) : user ? (
+            <>
             <Link
               href={dashboardUrl}
               className="flex items-center gap-2.5 rounded-xl border border-border bg-background px-3.5 py-2 text-sm font-semibold text-foreground shadow-xs transition-all hover:border-primary/40 hover:bg-muted"
             >
               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                {isSuperAdmin ? <ShieldAlert className="h-4 w-4 text-indigo-600" /> : <User className="h-4 w-4" />}
+                {isSuperAdmin ? (
+                  <ShieldAlert className="h-4 w-4 text-indigo-600" />
+                ) : isMediaOwner ? (
+                  <Building2 className="h-4 w-4 text-amber-600" />
+                ) : (
+                  <User className="h-4 w-4" />
+                )}
               </div>
               <span className="max-w-32 truncate">{user.name || "حساب کاربری"}</span>
               {isSuperAdmin && (
@@ -128,7 +148,14 @@ export default function Header() {
                   سوپر ادمین
                 </span>
               )}
+              {isMediaOwner && (
+                <span className="rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">
+                  مالک رسانه
+                </span>
+              )}
             </Link>
+            <LogoutButton variant="icon" label="خروج از حساب" />
+            </>
           ) : (
             <Link
               href="/login"
@@ -197,6 +224,7 @@ export default function Header() {
             {loading ? (
               <div className="h-10 w-full rounded-xl bg-muted/60 animate-pulse" />
             ) : user ? (
+              <>
               <Link
                 href={dashboardUrl}
                 onClick={() => setMobileMenuOpen(false)}
@@ -216,6 +244,8 @@ export default function Header() {
                   <span className="text-xs text-muted-foreground">مشاهده داشبورد</span>
                 )}
               </Link>
+              <LogoutButton className="w-full justify-center mt-2 border border-border" label="خروج از حساب کاربری" />
+              </>
             ) : (
               <Link
                 href="/login"

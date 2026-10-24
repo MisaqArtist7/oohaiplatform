@@ -14,6 +14,7 @@ import {
   FileCheck2,
   Lock,
 } from "lucide-react";
+import LogoutButton from "@/components/common/LogoutButton";
 
 interface AdminSidebarProps {
   isCollapsed: boolean;
@@ -220,8 +221,8 @@ export default function AdminSidebar({
           </div>
         </div>
 
-        {/* فوتر سایدبار با نشان وضعیت دسترسی مدیر ارشد */}
-        <div className="border-t border-slate-200 p-3 bg-slate-50">
+        {/* فوتر سایدبار با نشان وضعیت دسترسی مدیر ارشد و دکمه خروج */}
+        <div className="border-t border-slate-200 p-3 bg-slate-50 space-y-2">
           <div
             className={`flex items-center gap-3 rounded-xl bg-white p-2.5 border border-slate-200 shadow-xs ${
               isCollapsed ? "justify-center" : ""
@@ -250,6 +251,14 @@ export default function AdminSidebar({
                 </p>
               </div>
             )}
+          </div>
+
+          <div className="pt-1 border-t border-slate-200/80">
+            <LogoutButton
+              className={`w-full ${isCollapsed ? "justify-center px-0" : ""}`}
+              showText={!isCollapsed}
+              label="خروج از پنل مدیریت"
+            />
           </div>
         </div>
       </aside>

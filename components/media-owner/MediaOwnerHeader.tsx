@@ -8,6 +8,7 @@ import {
   Building2,
   MapPin,
 } from "lucide-react";
+import LogoutButton from "@/components/common/LogoutButton";
 
 interface MediaOwnerHeaderProps {
   onToggleMobile: () => void;
@@ -77,6 +78,9 @@ export default function MediaOwnerHeader({
             </div>
           </div>
         </div>
+
+        {/* دکمه خروج سریع */}
+        <LogoutButton variant="icon" label="خروج از پنل مالک رسانه" />
       </div>
     </header>
   );

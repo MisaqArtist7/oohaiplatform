@@ -1,5 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { cookies } from "next/headers";
+import { adminMediaOwnerRequestsStore } from "@/lib/admin-dashboard-data";
+import { mediaOwnerApplicationsStore } from "@/lib/client-dashboard-data";
+import { AdminMediaOwnerRequest } from "@/types/admin-dashboard";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "https://oohaiplatform.ir/api/v1";
 
@@ -160,6 +163,47 @@ export async function POST(req: NextRequest) {
     // پاسخ شبیه‌سازی‌شده معتبر در صورت آفلاین بودن بک‌اند
     const randomSuffix = Math.floor(1000 + Math.random() * 9000);
     const trackingCode = `MO-REQ-${randomSuffix}`;
+
+    let contactPerson = "کاربر متقاضی";
+    let userPhone = "09121112233";
+    const userCookie = store.get("user")?.value;
+    if (userCookie) {
+      try {
+        const u = JSON.parse(userCookie);
+        if (u.name) contactPerson = u.name;
+        if (u.phone) userPhone = u.phone;
+      } catch {}
+    }
+
+    const newAdminRequest: AdminMediaOwnerRequest = {
+      id: `mo-${randomSuffix}`,
+      trackingCode,
+      companyName,
+      nationalId,
+      contactPerson,
+      phone: userPhone,
+      address: "تهران",
+      province: "تهران",
+      structuresCount: 1,
+      status: "pending",
+      statusLabel: "در انتظار بررسی",
+      submittedAt: new Date().toLocaleDateString("fa-IR"),
+      documents: [],
+    };
+    adminMediaOwnerRequestsStore.unshift(newAdminRequest);
+
+    mediaOwnerApplicationsStore.unshift({
+      id: `MO-${randomSuffix}`,
+      companyName,
+      nationalId,
+      contactPerson,
+      phone: userPhone,
+      address: "تهران",
+      structuresCount: 1,
+      status: "pending",
+      submittedAt: new Date().toLocaleDateString("fa-IR"),
+      trackingCode,
+    });
 
     return NextResponse.json({
       success: true,

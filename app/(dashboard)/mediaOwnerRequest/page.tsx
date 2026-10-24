@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Building2,
   FileText,
@@ -20,6 +21,7 @@ import {
   ShieldCheck,
   RotateCcw,
 } from "lucide-react";
+import LogoutButton from "@/components/common/LogoutButton";
 
 // تبدیل ارقام فارسی و عربی به انگلیسی
 function toEnDigits(input: string): string {
@@ -31,6 +33,7 @@ function toEnDigits(input: string): string {
 }
 
 export default function MediaOwnerRequestPage() {
+  const router = useRouter();
   const [companyName, setCompanyName] = useState("");
   const [nationalId, setNationalId] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -42,6 +45,43 @@ export default function MediaOwnerRequestPage() {
   const [successResponse, setSuccessResponse] = useState<Record<string, unknown> | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // اگر کاربر قبلاً به عنوان مالک رسانه تایید شده باشد، مستقیماً به پنل اختصاصی هدایت می‌شود
+  useEffect(() => {
+    async function checkRole() {
+      try {
+        const res = await fetch("/api/auth/session");
+        if (res.ok) {
+          const sessionData = await res.json();
+          const user = sessionData?.user;
+          if (user) {
+            const userPermissions = Array.isArray(user.permissions) ? user.permissions : [];
+            const userRoles = Array.isArray(user.roles) ? user.roles : [];
+            const roleNames = userRoles
+              .map((r: unknown) =>
+                typeof r === "string"
+                  ? r
+                  : (r as { name?: string; slug?: string })?.name || (r as { name?: string; slug?: string })?.slug
+              )
+              .filter(Boolean);
+
+            const isMediaOwner =
+              userPermissions.some((p: string) =>
+                ["media-owner", "media_owner", "mediaowner", "dashboard.media-owner", "dashboard.media_owner", "structures.manage"].includes(p.toLowerCase())
+              ) ||
+              roleNames.some((r: string) =>
+                ["media-owner", "media_owner", "mediaowner"].includes(r.toLowerCase())
+              );
+
+            if (isMediaOwner) {
+              router.replace("/media-owner/structures");
+            }
+          }
+        }
+      } catch {}
+    }
+    checkRole();
+  }, [router]);
 
   const handleCompanyNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -178,6 +218,9 @@ export default function MediaOwnerRequestPage() {
               بیلبورد<span className="text-primary">مارکت</span>
             </span>
           </Link>
+          <div className="lg:hidden">
+            <LogoutButton variant="icon" />
+          </div>
         </div>
 
         <nav aria-label="منوی داشبورد" className="flex gap-1 overflow-x-auto px-3 pb-3 lg:flex-1 lg:flex-col lg:pb-0">
@@ -206,17 +249,16 @@ export default function MediaOwnerRequestPage() {
             <span>پیشنهادهای هوشمند</span>
           </Link>
 
-          <span
-            aria-disabled="true"
-            className="flex shrink-0 items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground/60"
+          <Link
+            href="/dashboard/bookings"
+            className="flex shrink-0 items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
           >
-            <CalendarCheck className="h-4 w-4" />
+            <CalendarCheck className="h-4 w-4 text-primary" />
             <span>رزروهای من</span>
-            <span className="rounded-full bg-muted px-2 py-0.5 text-[10px]">به‌زودی</span>
-          </span>
+          </Link>
         </nav>
 
-        <div className="border-t border-border p-4">
+        <div className="border-t border-border p-4 space-y-2">
           <Link
             href="/dashboard"
             className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-background px-4 py-2.5 text-sm font-medium text-foreground transition-all hover:bg-muted"
@@ -224,6 +266,10 @@ export default function MediaOwnerRequestPage() {
             <ArrowRight className="h-4 w-4" />
             <span>بازگشت به داشبورد</span>
           </Link>
+
+          <div className="pt-2 border-t border-border/60">
+            <LogoutButton className="w-full justify-center" />
+          </div>
         </div>
       </aside>
 

@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { mockStructures, mockBookingsStore } from "@/lib/mock-data";
 import { BookingRequestInput, BookingResponse } from "@/types/structure";
 import { clientBookingsStore } from "@/lib/client-dashboard-data";
 import { ClientBooking } from "@/types/client-dashboard";
+
+const API = process.env.NEXT_PUBLIC_API_URL ?? "https://oohaiplatform.ir/api/v1";
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,7 +13,76 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get("status") || "all";
     const search = searchParams.get("search")?.toLowerCase().trim() || "";
 
-    let items = [...clientBookingsStore];
+    const store = await cookies();
+    const token = store.get("token")?.value || request.headers.get("authorization")?.replace("Bearer ", "");
+
+    let items: ClientBooking[] = [];
+
+    // اگر توکن ورود موجود بود، بررسی داده‌های واقعی از بک‌اند
+    if (token) {
+      try {
+        const backendRes = await fetch(`${API}/client/bookings`, {
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          cache: "no-store",
+        });
+
+        if (backendRes.ok) {
+          const backendData = await backendRes.json();
+          const rawItems = Array.isArray(backendData?.data) ? backendData.data : [];
+          if (rawItems.length > 0) {
+            items = rawItems.map((b: Record<string, unknown>) => {
+              const structure = (b.structure as Record<string, unknown>) || {};
+              const images = (structure.images as Record<string, unknown>) || {};
+              const statusObj = (b.status as Record<string, unknown>) || {};
+              return {
+                id: String(b.id || b.uuid || `BK-${Math.floor(1000 + Math.random() * 9000)}`),
+                trackingCode: String(b.tracking_code || b.uuid || `BM-STR-${b.id || "00"}`),
+                structure: {
+                  id: String(structure.id || b.structure_id || ""),
+                  code: String(structure.code || `STR-${structure.id || b.id || "01"}`),
+                  title: String(structure.title || "سازه تبلیغاتی محیطی"),
+                  address: String(structure.address || "تهران"),
+                  district: String(structure.location || structure.district || "منطقه تهران"),
+                  dimensions: String(structure.dimensions || structure.dimension || "ابعاد استاندارد"),
+                  image: String(structure.image || images.day || "https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=1200&q=80"),
+                  type: String(structure.type || "بیلبورد"),
+                  category: String(structure.category || "اتوبانی و بزرگراهی"),
+                },
+                startDate: String(b.start_date || b.startDate || "۱۴۰۳/۰۲/۰۱"),
+                endDate: String(b.end_date || b.endDate || "۱۴۰۳/۰۳/۰۱"),
+                durationDays: Number(b.duration_days || b.durationDays || 30),
+                totalPrice: Number(b.total_amount || b.totalPrice || 0),
+                status: {
+                  value: ((statusObj.value as string) || (b.status as string) || "pending_review") as ClientBooking["status"]["value"],
+                  label: String(statusObj.label || (typeof b.status === "string" ? b.status : "در حال بررسی")),
+                  color: ((statusObj.color as string) || "amber") as ClientBooking["status"]["color"],
+                },
+                brandName: String(b.brand_name || b.brandName || "نامشخص"),
+                contactPerson: String(b.contact_person || b.contactPerson || "کاربر سامانه"),
+                contactPhone: String(b.contact_phone || b.contactPhone || ""),
+                createdAt: String(b.created_at || b.createdAt || "اخیراً"),
+                lockedUntil: b.locked_until ? String(b.locked_until) : (b.lockedUntil ? String(b.lockedUntil) : undefined),
+                proforma: b.proforma as ClientBooking["proforma"],
+                timeline: (b.timeline as ClientBooking["timeline"]) || [],
+                payments: (b.payments as ClientBooking["payments"]) || [],
+                documents: (b.documents as ClientBooking["documents"]) || [],
+              };
+            });
+          }
+        }
+      } catch {
+        // در صورت عدم پاسخگویی بک‌اند، از داده‌های استور استفاده می‌شود
+      }
+    }
+
+    if (items.length === 0) {
+      items = [...clientBookingsStore];
+    }
+
+    const allItems = [...items];
 
     if (status && status !== "all") {
       items = items.filter((b) => b.status.value === status);
@@ -31,12 +103,12 @@ export async function GET(request: NextRequest) {
       data: items,
       total: items.length,
       counts: {
-        all: clientBookingsStore.length,
-        pending_review: clientBookingsStore.filter((b) => b.status.value === "pending_review").length,
-        awaiting_payment: clientBookingsStore.filter((b) => b.status.value === "awaiting_payment").length,
-        active: clientBookingsStore.filter((b) => b.status.value === "active").length,
-        cancelled: clientBookingsStore.filter((b) => b.status.value === "cancelled").length,
-        completed: clientBookingsStore.filter((b) => b.status.value === "completed").length,
+        all: allItems.length,
+        pending_review: allItems.filter((b) => b.status.value === "pending_review").length,
+        awaiting_payment: allItems.filter((b) => b.status.value === "awaiting_payment").length,
+        active: allItems.filter((b) => b.status.value === "active").length,
+        cancelled: allItems.filter((b) => b.status.value === "cancelled").length,
+        completed: allItems.filter((b) => b.status.value === "completed").length,
       },
     });
   } catch {

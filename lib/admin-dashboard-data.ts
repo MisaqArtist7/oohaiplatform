@@ -7,7 +7,7 @@ import {
   BookingAuditLog,
 } from "@/types/admin-dashboard";
 import { BookingTimelineItem } from "@/types/client-dashboard";
-import { initialClientBookings } from "./client-dashboard-data";
+import { initialClientBookings, mediaOwnerApplicationsStore } from "./client-dashboard-data";
 
 // نقش‌های موجود در سامانه OOHAI
 export const initialAdminRoles: AdminRole[] = [
@@ -599,6 +599,25 @@ export function approveMediaOwnerApplication(requestId: string): AdminMediaOwner
   item.statusLabel = "تایید شده و فعال";
   item.reviewedAt = new Date().toLocaleDateString("fa-IR");
   item.reviewedBy = "مدیریت پلتفرم OOHAI";
+
+  // بروزرسانی وضعیت در استور کلاینت
+  const clientApp = mediaOwnerApplicationsStore.find(
+    (r) => r.id === requestId || r.trackingCode === item.trackingCode || (item.phone && r.phone === item.phone)
+  );
+  if (clientApp) {
+    clientApp.status = "approved";
+  }
+
+  // ارتقای نقش کاربر در سامانه به media-owner
+  const user = adminUsersStore.find(
+    (u) =>
+      (item.phone && u.phone === item.phone) ||
+      (item.nationalId && u.nationalCode === item.nationalId) ||
+      (item.contactPerson && u.name === item.contactPerson)
+  );
+  if (user) {
+    assignRoleToUser(user.id, "media-owner");
+  }
 
   return item;
 }

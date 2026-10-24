@@ -14,6 +14,7 @@ import {
   Building2,
   ChevronLeft,
 } from "lucide-react";
+import LogoutButton from "@/components/common/LogoutButton";
 
 interface MediaOwnerSidebarProps {
   isCollapsed: boolean;
@@ -204,6 +205,14 @@ export default function MediaOwnerSidebar({
             <ChevronLeft className="h-4 w-4 shrink-0" />
             {!isCollapsed && <span>صفحه اصلی بیلبورد مارکت</span>}
           </Link>
+
+          <div className="pt-1 border-t border-border/60">
+            <LogoutButton
+              className={`w-full ${isCollapsed ? "justify-center px-0" : ""}`}
+              showText={!isCollapsed}
+              label="خروج از پنل مالک رسانه"
+            />
+          </div>
         </div>
       </aside>
     </>

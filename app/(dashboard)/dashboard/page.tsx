@@ -14,6 +14,7 @@ CalendarDays,
 AlertCircle,
 Handshake,
 } from "lucide-react";
+import { adminMediaOwnerRequestsStore } from "@/lib/admin-dashboard-data";
 
 /* ───────────────────────── تنظیمات ───────────────────────── */
 
@@ -22,6 +23,7 @@ const API = process.env.NEXT_PUBLIC_API_URL ?? "https://oohaiplatform.ir/api/v1"
 // آدرس صفحه‌هایی که بعدا می‌سازیم؛ اینجا یک‌جا عوض کن
 const ROUTES = {
 structures: "/structures",
+bookings: "/dashboard/bookings",
 booking: (id: string) => `/dashboard/bookings/${id}`,
 mediaOwnerRequest: "/mediaOwnerRequest",
 proposals: "/dashboard/proposals",
@@ -159,7 +161,14 @@ const token = store.get("token")?.value;
 if (!token) redirect("/register?r=dashboard-no-token");
 
 let userName = "کاربر";
-let userObj: { name?: string; permissions?: string[]; roles?: (string | { name?: string })[] } | null = null;
+let userObj: {
+  id?: string;
+  name?: string;
+  phone?: string;
+  nationalCode?: string;
+  permissions?: string[];
+  roles?: (string | { name?: string; slug?: string })[];
+} | null = null;
 try {
     userObj = JSON.parse(store.get("user")?.value ?? "null");
     if (userObj?.name) userName = userObj.name;
@@ -173,7 +182,7 @@ const userPermissions: string[] =
 const userRoles =
   userObj?.roles && Array.isArray(userObj.roles) ? userObj.roles : [];
 const roleNames: string[] = userRoles
-  .map((r) => (typeof r === "string" ? r : r?.name))
+  .map((r) => (typeof r === "string" ? r : r?.name || (r as { slug?: string })?.slug))
   .filter((r): r is string => Boolean(r));
 
 const isSuperAdmin =
@@ -186,6 +195,30 @@ const isSuperAdmin =
 
 if (isSuperAdmin) {
   redirect("/dashboard/superadmin");
+}
+
+// بررسی دسترسی مالک رسانه (Media Owner)
+// در صورتی که کاربر مالک رسانه باشد یا درخواست همکاری وی توسط سوپرادمین تایید شده باشد،
+// داشبورد کلاینت نمایش داده نشده و مستقیماً وارد پنل اختصاصی مالکان رسانه می‌شود
+const hasApprovedMoRequest = adminMediaOwnerRequestsStore.some(
+  (req) =>
+    req.status === "approved" &&
+    ((userObj?.phone && req.phone === userObj.phone) ||
+     (userObj?.nationalCode && req.nationalId === userObj.nationalCode) ||
+     (userObj?.name && req.contactPerson === userObj.name))
+);
+
+const isMediaOwner =
+  hasApprovedMoRequest ||
+  userPermissions.some((p: string) =>
+    ["media-owner", "media_owner", "mediaowner", "dashboard.media-owner", "dashboard.media_owner", "structures.manage"].includes(p.toLowerCase())
+  ) ||
+  roleNames.some((r: string) =>
+    ["media-owner", "media_owner", "mediaowner"].includes(r.toLowerCase())
+  );
+
+if (isMediaOwner) {
+  redirect("/media-owner/structures");
 }
 
 // ۲) دریافت رزروها
@@ -249,24 +282,22 @@ return (
             className="flex shrink-0 items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
         >
             <Handshake className="h-4 w-4 text-primary" />
-            <span>همکاری</span>
+            <span>درخواست همکاری</span>
         </Link>
 
-        {/* صفحه‌های بعدی؛ تا ساخته نشدن غیرفعال‌اند */}
-        <span
-            aria-disabled="true"
-            className="flex shrink-0 items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground/60"
+        <Link
+            href={ROUTES.bookings}
+            className="flex shrink-0 items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
         >
-            <CalendarCheck className="h-4 w-4" />
+            <CalendarCheck className="h-4 w-4 text-primary" />
             <span>رزروهای من</span>
-            <span className="rounded-full bg-muted px-2 py-0.5 text-[10px]">به‌زودی</span>
-        </span>
+        </Link>
         <Link
             href={ROUTES.proposals}
             className="flex shrink-0 items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
         >
             <Sparkles className="h-4 w-4 text-primary" />
-            <span>پیشنهادهای هوشمند</span>
+            <span>ایجاد کمپین هوشمند</span>
         </Link>
         </nav>
 

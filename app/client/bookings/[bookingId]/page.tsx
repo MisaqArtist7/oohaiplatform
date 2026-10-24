@@ -28,5 +28,5 @@ export default async function ClientBookingDetailPage({
   params,
 }: BookingPageProps) {
   const { bookingId } = await params;
-  return <BookingDetailView bookingId={bookingId} />;
+  return <BookingDetailView bookingId={bookingId} backUrl="/client/bookings" />;
 }
