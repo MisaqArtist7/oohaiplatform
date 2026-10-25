@@ -1,12 +1,8 @@
 import { Structure, StructureCategory, StructureType } from "@/types/structure";
 
-// تبدیل اعداد انگلیسی به فارسی
-export function toPersianDigits(input: number | string | undefined | null): string {
-  if (input === undefined || input === null) return "";
-  const str = input.toString();
-  const persianDigits = ["۰", "۱", "۲", "۳", "۴", "۵", "۶", "۷", "۸", "۹"];
-  return str.replace(/[0-9]/g, (w) => persianDigits[+w]);
-}
+// انتقال‌یافته به shared/lib/digits.ts (re-export موقت برای حفظ سازگاری)
+import { toPersianDigits } from "@/shared/lib/digits";
+export { toPersianDigits };
 
 // قالب‌بندی قیمت به تومان
 export function formatToman(amount: number): string {
