@@ -1,108 +1,108 @@
-export type BookingStatusType =
+export type BookingStatusValue =
   | "pending_review"
   | "locked_for_contract"
   | "proforma_issued"
-  | "awaiting_payment"
   | "payment_submitted"
-  | "approved"
-  | "active"
-  | "cancelled"
+  | "occupied"
   | "rejected"
+  | "expired"
   | "completed";
 
-export interface BookingTimelineItem {
-  id: string;
+export type BookingAction =
+  | "lock_for_contract"
+  | "issue_proforma"
+  | "submit_payment"
+  | "approve_payment"
+  | "reject"
+  | "complete";
+
+export interface BookingStatus {
+  value: BookingStatusValue;
+  label: string;
+}
+
+export interface BookingUser {
+  id: number;
+  name: string;
+  phone: string;
+}
+
+export interface BookingStructureLocation {
+  latitude: number;
+  longitude: number;
+}
+
+export interface BookingStructure {
+  id: number;
+  uuid: string;
   title: string;
-  description: string;
-  timestamp: string;
-  actor: string;
-  status: string;
-  isDone: boolean;
-  isCurrent?: boolean;
+  price: string;
+  location: BookingStructureLocation;
+  address: string;
+}
+
+export interface BookingLog {
+  id: number;
+  booking_id: number;
+  changed_by_user_id: number;
+  user_role: string;
+  from_status: BookingStatus | null;
+  to_status: BookingStatus;
+  note: string | null;
+  created_at: string;
 }
 
 export interface BookingDocument {
-  id: string;
-  title: string;
-  type: "proforma" | "contract" | "installation_order" | "invoice";
-  typeLabel: string;
-  date: string;
-  fileSize: string;
-  downloadUrl: string;
-  requiresSignature?: boolean;
+  id: number;
+  booking_id: number;
+  uuid: string;
+  document_type: string;
+  original_filename: string;
+  mime_type: string;
+  file_size: number;
+  uploaded_by: number;
+  created_at: string;
 }
 
-export interface BookingPayment {
-  id: string;
-  method: "satna" | "sayad_check";
-  methodLabel: string;
-  amount: number;
-  trackingCode?: string;
-  bankName?: string;
-  checkSerial?: string;
-  checkSayadId?: string;
-  dueDate?: string;
-  submittedAt: string;
-  status: "pending_verification" | "verified" | "rejected";
-  statusLabel: string;
-  receiptUrl?: string;
-  notes?: string;
+export interface Booking {
+  id: number;
+  uuid: string;
+  user_id: number;
+  user?: BookingUser;
+  structure_id: number;
+  structure: BookingStructure;
+  start_date: string;
+  end_date: string;
+  status: BookingStatus;
+  locked_until: string | null;
+  is_lock_expired: boolean;
+  total_amount: string;
+  payment_reference: string | null;
+  rejection_reason: string | null;
+  allowed_actions: BookingAction[];
+  logs?: BookingLog[];
+  documents?: BookingDocument[];
+  created_at: string;
+  updated_at: string;
 }
 
-export interface ClientBooking {
-  id: string;
-  trackingCode: string;
-  structure: {
-    id: string;
-    code: string;
-    title: string;
-    address: string;
-    district: string;
-    dimensions: string;
-    image: string;
-    type: string;
-    category: string;
-  };
-  startDate: string;
-  endDate: string;
-  durationDays: number;
-  totalPrice: number;
-  status: {
-    value: BookingStatusType;
-    label: string;
-    color: "amber" | "indigo" | "emerald" | "rose" | "slate" | "blue";
-  };
-  brandName: string;
-  contactPerson: string;
-  contactPhone: string;
-  createdAt: string;
-  lockedUntil?: string;
-  proforma?: {
-    id: string;
-    number: string;
-    issueDate: string;
-    expiresAt: string;
-    amount: number;
-    downloadUrl: string;
-  };
-  timeline: BookingTimelineItem[];
-  payments: BookingPayment[];
-  documents: BookingDocument[];
+export interface CreateBookingPayload {
+  structure_id: number;
+  start_date: string; // ISO YYYY-MM-DD
+  end_date: string; // ISO YYYY-MM-DD
+  company_name: string;
+  national_id: string; // 10 or 11 digits
+  total_amount: number; // Rial
+  note?: string;
 }
 
-export interface PaymentSubmissionInput {
-  bookingId: string;
-  method: "satna" | "sayad_check";
-  amount: number;
-  bankName?: string;
-  trackingCode?: string;
-  checkSerial?: string;
-  checkSayadId?: string;
-  dueDate?: string;
-  receiptFileName?: string;
-  notes?: string;
+export interface BookingListFilters {
+  page?: number;
+  per_page?: number;
+  status?: BookingStatusValue | string;
 }
 
+// تایپ‌های مربوط به پروپوزال و مالکان رسانه (تسک‌های ۸ و مرتبط)
 export interface ProposalRecommendedStructure {
   structureId: string;
   title: string;

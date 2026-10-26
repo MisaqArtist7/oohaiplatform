@@ -1,58 +1,56 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  fetchClientBookings,
-  fetchClientBookingById,
-  createBookingRequestApi,
-  submitBookingPaymentApi,
-} from "../api/bookings.api";
-import type { BookingRequestInput } from "@/features/structures/types";
-import { PaymentSubmissionInput } from "../types";
+import { useRouter } from "next/navigation";
+import { createBooking, listBookings, getBooking } from "../api/bookings.api";
+import { CreateBookingPayload, BookingListFilters, Booking } from "../types";
+import { Page } from "@/shared/lib/pagination";
 
-export const bookingQueryKeys = {
-  all: ["client-bookings"] as const,
-  list: (status: string, search: string) =>
-    ["client-bookings", "list", { status, search }] as const,
-  detail: (id: string) => ["client-bookings", "detail", id] as const,
+export const bookingsQueryKeys = {
+  all: ["bookings"] as const,
+  lists: () => [...bookingsQueryKeys.all, "list"] as const,
+  list: (filters: BookingListFilters) =>
+    [...bookingsQueryKeys.all, "list", filters] as const,
+  details: () => [...bookingsQueryKeys.all, "detail"] as const,
+  detail: (uuid: string) =>
+    [...bookingsQueryKeys.all, "detail", uuid] as const,
 };
 
-export function useClientBookingsQuery(status: string = "all", search: string = "") {
-  return useQuery({
-    queryKey: bookingQueryKeys.list(status, search),
-    queryFn: () => fetchClientBookings(status, search),
+/**
+ * هوک واکشی لیست رزروهای کاربر
+ */
+export function useBookingsListQuery(filters: BookingListFilters = {}) {
+  return useQuery<Page<Booking>>({
+    queryKey: bookingsQueryKeys.list(filters),
+    queryFn: () => listBookings(filters),
   });
 }
 
-export function useClientBookingDetailQuery(id: string) {
-  return useQuery({
-    queryKey: bookingQueryKeys.detail(id),
-    queryFn: () => fetchClientBookingById(id),
-    enabled: !!id,
+/**
+ * هوک واکشی جزئیات رزرو با UUID
+ */
+export function useBookingDetailQuery(uuid: string) {
+  return useQuery<Booking>({
+    queryKey: bookingsQueryKeys.detail(uuid),
+    queryFn: () => getBooking(uuid),
+    enabled: Boolean(uuid),
   });
 }
 
+/**
+ * هوک ثبت رزرو جدید، اینولیدیت کردن کش لیست، و هدایت به صفحه جزئیات با UUID
+ */
 export function useCreateBookingMutation() {
   const queryClient = useQueryClient();
+  const router = useRouter();
 
   return useMutation({
-    mutationFn: (data: BookingRequestInput) => createBookingRequestApi(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: bookingQueryKeys.all });
-      queryClient.invalidateQueries({ queryKey: ["admin", "bookings"] });
-    },
-  });
-}
-
-export function useSubmitPaymentMutation() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (data: PaymentSubmissionInput) => submitBookingPaymentApi(data),
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: bookingQueryKeys.all });
+    mutationFn: (payload: CreateBookingPayload) => createBooking(payload),
+    onSuccess: (booking) => {
       queryClient.invalidateQueries({
-        queryKey: bookingQueryKeys.detail(variables.bookingId),
+        queryKey: bookingsQueryKeys.lists(),
       });
-      queryClient.invalidateQueries({ queryKey: ["admin", "bookings"] });
+      if (booking?.uuid) {
+        router.push(`/client/bookings/${booking.uuid}`);
+      }
     },
   });
 }

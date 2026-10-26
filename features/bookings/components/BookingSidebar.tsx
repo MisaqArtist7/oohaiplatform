@@ -1,445 +1,368 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useId, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import {
-  User,
-  Phone,
-  Building2,
-  FileText,
-  Clock,
-  Sparkles,
-  ShieldCheck,
-  CheckCircle2,
-  Copy,
-  Check,
-  Download,
-  Loader2,
-  Calendar,
-} from "lucide-react";
+import { useRouter, usePathname } from "next/navigation";
 import { toast } from "sonner";
-import type { Structure, BookingResponse } from "@/features/structures/types";
-import { formatToman } from "@/shared/lib/money";
-import { toPersianDigits } from "@/shared/lib/digits";
 import {
-  bookingRequestSchema,
-  BookingRequestFormValues,
+  Building2,
+  Clock,
+  ShieldCheck,
+  Loader2,
+  CreditCard,
+  Hash,
+} from "lucide-react";
+import type { Structure } from "@/features/structures/types";
+import { formatToman } from "@/shared/lib/money";
+import { toPersianDigits, toEnglishDigits } from "@/shared/lib/digits";
+import { formatJalali } from "@/shared/lib/dates";
+import { ApiError } from "@/shared/lib/errors";
+import { useSession } from "@/features/auth";
+import {
+  createBookingSchema,
+  CreateBookingFormValues,
 } from "../schemas/booking.schema";
+import { estimateTotalRial } from "../lib/estimate-price";
 import { useCreateBookingMutation } from "../hooks/useBookings";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Textarea } from "@/shared/components/ui/textarea";
 import { Badge } from "@/shared/components/ui/badge";
 import { Card } from "@/shared/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/shared/components/ui/dialog";
 
 interface BookingSidebarProps {
   structure: Structure;
 }
 
-export default function BookingSidebar({ structure }: BookingSidebarProps) {
-  const [selectedDurationPreset, setSelectedDurationPreset] = useState<number>(30);
-  const [successResponse, setSuccessResponse] = useState<BookingResponse | null>(null);
-  const [copiedTracking, setCopiedTracking] = useState(false);
+function getDefaultDates() {
+  const now = new Date();
+  const start = new Date(now.getTime() + 24 * 60 * 60 * 1000); // فردا
+  const end = new Date(start.getTime() + 30 * 24 * 60 * 60 * 1000); // ۳۰ روز بعد
 
+  const fmt = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  };
+
+  return {
+    start: fmt(start),
+    end: fmt(end),
+  };
+}
+
+export default function BookingSidebar({ structure }: BookingSidebarProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const { isAuthenticated } = useSession();
   const createBookingMutation = useCreateBookingMutation();
+
+  const startDateId = useId();
+  const endDateId = useId();
+  const companyNameId = useId();
+  const nationalId = useId();
+  const noteId = useId();
+
+  const monthlyPriceRial = Number(
+    structure.price ?? structure.pricing?.basePriceMonthly ?? 0
+  );
+
+  const defaultDates = useMemo(() => getDefaultDates(), []);
+
+  const defaultEstimatedRial = useMemo(
+    () => estimateTotalRial(monthlyPriceRial, defaultDates.start, defaultDates.end),
+    [monthlyPriceRial, defaultDates.start, defaultDates.end]
+  );
 
   const {
     register,
     handleSubmit,
     setValue,
     watch,
-    formState: { errors },
-  } = useForm<BookingRequestFormValues>({
-    resolver: zodResolver(bookingRequestSchema),
+    setError,
+    formState: { errors, isSubmitting },
+  } = useForm<CreateBookingFormValues>({
+    resolver: zodResolver(createBookingSchema),
     defaultValues: {
-      structureId: String(structure.id),
-      fullName: "",
-      phone: "",
-      brandName: "",
-      startDate: "2026-04-01",
-      endDate: "2026-05-01",
-      durationDays: 30,
-      notes: "",
+      structure_id: Number(structure.id),
+      start_date: defaultDates.start,
+      end_date: defaultDates.end,
+      company_name: "",
+      national_id: "",
+      note: "",
+      total_amount: defaultEstimatedRial,
     },
   });
 
-  const startDate = watch("startDate");
-  const endDate = watch("endDate");
+  const startDate = watch("start_date");
+  const endDate = watch("end_date");
 
-  // محاسبه روزها بین دو تاریخ
-  const calculateDays = (start: string, end: string) => {
-    try {
-      const s = new Date(start);
-      const e = new Date(end);
-      const diffTime = e.getTime() - s.getTime();
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      return Math.max(diffDays, structure.specs?.minDurationDays || 15);
-    } catch {
-      return 30;
+  // محاسبه مبلغ برآورد با تغییر تاریخ‌ها
+  const estimatedTotalRial = useMemo(() => {
+    const total = estimateTotalRial(monthlyPriceRial, startDate, endDate);
+    setValue("total_amount", total);
+    return total;
+  }, [monthlyPriceRial, startDate, endDate, setValue]);
+
+  const onSubmit = async (values: CreateBookingFormValues) => {
+    if (!isAuthenticated) {
+      toast.info("جهت ثبت درخواست رزرو، ابتدا وارد حساب کاربری خود شوید.");
+      router.push(`/login?next=${encodeURIComponent(pathname || `/structures/${structure.id}`)}`);
+      return;
     }
-  };
 
-  const currentDurationDays = calculateDays(startDate, endDate);
-  const dailyRate =
-    structure.pricing?.dailyRate || Math.round((structure.price || 0) / 30);
-  const rawTotal = currentDurationDays * dailyRate;
-
-  // تخفیف ماهانه در صورتی که مدت بیش از ۳۰ روز باشد
-  const discountPercent =
-    currentDurationDays >= 30
-      ? structure.pricing?.discountMonthlyPercent || 5
-      : 0;
-  const discountAmount = Math.round((rawTotal * discountPercent) / 100);
-  const estimatedTotal = rawTotal - discountAmount;
-
-  // تغییر پریست مدت زمان
-  const handleDurationPreset = (days: number) => {
-    setSelectedDurationPreset(days);
-    const start = startDate ? new Date(startDate) : new Date();
-    const end = new Date(start.getTime() + days * 24 * 60 * 60 * 1000);
-    const endStr = end.toISOString().split("T")[0];
-    setValue("endDate", endStr);
-    setValue("durationDays", days);
-  };
-
-  const onSubmit = async (values: BookingRequestFormValues) => {
     try {
       const payload = {
-        ...values,
-        structureId: String(structure.id),
-        durationDays: currentDurationDays,
-        estimatedPrice: estimatedTotal,
+        structure_id: Number(structure.id),
+        start_date: values.start_date,
+        end_date: values.end_date,
+        company_name: values.company_name.trim(),
+        national_id: toEnglishDigits(values.national_id).trim(),
+        total_amount: estimatedTotalRial,
+        note: values.note?.trim() || undefined,
       };
 
-      const response = await createBookingMutation.mutateAsync(payload);
-      setSuccessResponse(response);
-      toast.success("درخواست رزرو اولیه با موفقیت ثبت شد!");
-    } catch (err) {
+      await createBookingMutation.mutateAsync(payload);
+      toast.success("درخواست رزرو با موفقیت ثبت شد و به پنل جزئیات منتقل شدید.");
+    } catch (err: unknown) {
+      if (err instanceof ApiError) {
+        if (err.isValidation && err.fieldErrors) {
+          for (const [field, messages] of Object.entries(err.fieldErrors)) {
+            const msg = Array.isArray(messages) ? messages.join("، ") : String(messages);
+            setError(field as keyof CreateBookingFormValues, {
+              type: "server",
+              message: msg,
+            });
+          }
+          toast.error("لطفاً خطاهای مشخص‌شده در فرم را اصلاح فرمایید.");
+          return;
+        }
+
+        if (err.isForbidden || err.isRateLimited) {
+          toast.error(err.message || "خطای عدم دسترسی یا محدودیت تعداد درخواست");
+          return;
+        }
+
+        toast.error(err.message || "خطایی در ثبت درخواست رزرو رخ داد.");
+        return;
+      }
+
       const msg = err instanceof Error ? err.message : "خطایی در ثبت درخواست رخ داد.";
       toast.error(msg);
     }
   };
 
-  const handleCopyTrackingCode = () => {
-    if (successResponse?.trackingCode) {
-      navigator.clipboard.writeText(successResponse.trackingCode);
-      setCopiedTracking(true);
-      toast.info("کد پیگیری در کلیپ‌بورد کپی شد.");
-      setTimeout(() => setCopiedTracking(false), 2000);
+  const handleActionClick = () => {
+    if (!isAuthenticated) {
+      router.push(`/login?next=${encodeURIComponent(pathname || `/structures/${structure.id}`)}`);
     }
   };
 
   return (
-    <>
-      <Card className="sticky top-20 shadow-md overflow-hidden transition-all border-border bg-card">
-        {/* هدر تعرفه و وضعیت */}
-        <div className="border-b border-border bg-linear-to-l from-slate-50 to-indigo-50/40 p-5 sm:p-6 text-right">
-          <div className="flex items-start justify-between">
+    <Card className="sticky top-20 shadow-md overflow-hidden transition-all border-border bg-card">
+      {/* هدر تعرفه ماهانه */}
+      <div className="border-b border-border bg-linear-to-l from-slate-50 to-indigo-50/40 dark:from-slate-900/60 dark:to-indigo-950/30 p-5 sm:p-6 text-right">
+        <div className="flex items-start justify-between">
+          <div>
+            <span className="text-xs font-semibold text-muted-foreground block mb-1">
+              تعرفه پایه ماهانه
+            </span>
+            <div className="text-2xl sm:text-3xl font-black text-foreground">
+              {formatToman(monthlyPriceRial)}
+            </div>
+          </div>
+
+          <Badge variant="success" className="gap-1 py-1 px-2.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            آماده ثبت رزرو
+          </Badge>
+        </div>
+      </div>
+
+      {/* فرم ثبت رزرو */}
+      <form onSubmit={handleSubmit(onSubmit)} className="p-5 sm:p-6 space-y-4 text-right">
+        {/* انتخاب بازه زمانی */}
+        <div className="space-y-3">
+          <label className="text-xs font-bold text-foreground flex items-center gap-1.5">
+            <Clock className="h-4 w-4 text-primary" />
+            <span>بازه زمانی اکران</span>
+          </label>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <div className="flex items-baseline gap-1.5">
-                <span className="text-2xl sm:text-3xl font-black text-foreground">
-                  {toPersianDigits(dailyRate.toLocaleString("fa-IR"))}
-                </span>
-                <span className="text-xs font-semibold text-muted-foreground">تومان / روزانه</span>
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                تعرفه ماهانه: {toPersianDigits((structure.pricing?.basePriceMonthly ?? structure.price ?? 0).toLocaleString("fa-IR"))} تومان
-              </p>
+              <label
+                htmlFor={startDateId}
+                className="block text-[11px] font-medium text-muted-foreground mb-1"
+              >
+                تاریخ شروع (میلادی):
+              </label>
+              <Input
+                id={startDateId}
+                type="date"
+                {...register("start_date")}
+                className="text-xs font-mono"
+              />
+              {startDate && (
+                <div className="text-[11px] text-muted-foreground mt-1 font-sans">
+                  معادل شمسی: {toPersianDigits(formatJalali(startDate))}
+                </div>
+              )}
+              {errors.start_date && (
+                <p className="mt-1 text-[11px] text-destructive font-bold">
+                  {errors.start_date.message}
+                </p>
+              )}
             </div>
 
-            <Badge variant="success" className="gap-1 py-1 px-2.5">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              آماده پذیرش رزرو
-            </Badge>
+            <div>
+              <label
+                htmlFor={endDateId}
+                className="block text-[11px] font-medium text-muted-foreground mb-1"
+              >
+                تاریخ پایان (میلادی):
+              </label>
+              <Input
+                id={endDateId}
+                type="date"
+                {...register("end_date")}
+                className="text-xs font-mono"
+              />
+              {endDate && (
+                <div className="text-[11px] text-muted-foreground mt-1 font-sans">
+                  معادل شمسی: {toPersianDigits(formatJalali(endDate))}
+                </div>
+              )}
+              {errors.end_date && (
+                <p className="mt-1 text-[11px] text-destructive font-bold">
+                  {errors.end_date.message}
+                </p>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* فرم ثبت رزرو با React Hook Form و Zod */}
-        <form onSubmit={handleSubmit(onSubmit)} className="p-5 sm:p-6 space-y-5 text-right">
-          {/* انتخاب بازه زمانی */}
+        {/* مشخصات شرکت و شناسه ملی */}
+        <div className="space-y-3 pt-2 border-t border-border">
           <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                <Clock className="h-4 w-4 text-primary" />
-                <span>مدت دوره اکران</span>
-              </label>
-              <span className="text-xs font-bold text-primary font-mono">
-                {toPersianDigits(currentDurationDays)} روز
-              </span>
-            </div>
-
-            {/* پریست‌های آماده روز */}
-            <div className="grid grid-cols-4 gap-1.5 mb-3">
-              {[15, 30, 45, 90].map((days) => (
-                <button
-                  type="button"
-                  key={days}
-                  onClick={() => handleDurationPreset(days)}
-                  className={`rounded-xl border py-2 text-xs font-bold transition-all cursor-pointer ${
-                    selectedDurationPreset === days
-                      ? "border-primary bg-primary/10 text-primary shadow-xs"
-                      : "border-border bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground"
-                  }`}
-                >
-                  {toPersianDigits(days)} روزه
-                </button>
-              ))}
-            </div>
-
-            {/* ورودی تاریخ شروع و پایان */}
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <span className="block text-[11px] font-medium text-muted-foreground mb-1">
-                  تاریخ شروع:
-                </span>
-                <Input
-                  type="date"
-                  {...register("startDate")}
-                  className="text-xs"
-                />
-              </div>
-              <div>
-                <span className="block text-[11px] font-medium text-muted-foreground mb-1">
-                  تاریخ پایان:
-                </span>
-                <Input
-                  type="date"
-                  {...register("endDate")}
-                  className="text-xs"
-                />
-              </div>
-            </div>
-            {errors.startDate && (
-              <p className="mt-1 text-[11px] text-destructive font-bold">
-                {errors.startDate.message}
-              </p>
-            )}
-            {errors.endDate && (
-              <p className="mt-1 text-[11px] text-destructive font-bold">
-                {errors.endDate.message}
-              </p>
-            )}
-          </div>
-
-          {/* فیلدهای مشخصات متقاضی */}
-          <div className="space-y-3 pt-2 border-t border-border">
-            <div>
-              <label className="block text-xs font-bold text-foreground mb-1">
-                نام و نام خانوادگی مسئول هماهنگی *
-              </label>
-              <div className="relative">
-                <Input
-                  type="text"
-                  placeholder="مثال: محمدرضا کمالی"
-                  {...register("fullName")}
-                  className="pr-9"
-                />
-                <User className="absolute right-3 top-2.5 h-4 w-4 text-muted-foreground pointer-events-none" />
-              </div>
-              {errors.fullName && (
-                <p className="mt-1 text-[11px] text-destructive font-bold">
-                  {errors.fullName.message}
-                </p>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-foreground mb-1">
-                شماره موبایل فعال (جهت ارسال پیامک و قرارداد) *
-              </label>
-              <div className="relative">
-                <Input
-                  type="tel"
-                  dir="ltr"
-                  placeholder="09123456789"
-                  {...register("phone")}
-                  className="pr-9 text-left font-mono"
-                />
-                <Phone className="absolute right-3 top-2.5 h-4 w-4 text-muted-foreground pointer-events-none" />
-              </div>
-              {errors.phone && (
-                <p className="mt-1 text-[11px] text-destructive font-bold">
-                  {errors.phone.message}
-                </p>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-foreground mb-1">
-                نام برند یا شرکت تجاری *
-              </label>
-              <div className="relative">
-                <Input
-                  type="text"
-                  placeholder="مثال: آژانس هواپیمایی یا دیجی‌کالا"
-                  {...register("brandName")}
-                  className="pr-9"
-                />
-                <Building2 className="absolute right-3 top-2.5 h-4 w-4 text-muted-foreground pointer-events-none" />
-              </div>
-              {errors.brandName && (
-                <p className="mt-1 text-[11px] text-destructive font-bold">
-                  {errors.brandName.message}
-                </p>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-foreground mb-1">
-                توضیحات و نیازمندی‌های خاص طرح (اختیاری)
-              </label>
-              <Textarea
-                rows={2}
-                placeholder="توضیحات مربوط به چاپ بنر، نورپردازی شب یا زمان‌بندی نصب..."
-                {...register("notes")}
+            <label
+              htmlFor={companyNameId}
+              className="block text-xs font-bold text-foreground mb-1"
+            >
+              نام شرکت یا برند تجاری *
+            </label>
+            <div className="relative">
+              <Input
+                id={companyNameId}
+                type="text"
+                placeholder="مثال: شرکت تجارت نوین یا برند دیجی‌کالا"
+                {...register("company_name")}
+                className="pr-9"
               />
+              <Building2 className="absolute right-3 top-2.5 h-4 w-4 text-muted-foreground pointer-events-none" />
             </div>
+            {errors.company_name && (
+              <p className="mt-1 text-[11px] text-destructive font-bold">
+                {errors.company_name.message}
+              </p>
+            )}
           </div>
 
-          {/* فاکتور و برآورد مالی */}
-          <div className="rounded-xl bg-muted/50 p-3.5 space-y-2 border border-border text-xs">
-            <div className="flex justify-between items-center text-muted-foreground">
-              <span>هزینه پایه ({toPersianDigits(currentDurationDays)} روز اکران):</span>
-              <span className="font-mono font-bold text-foreground">
-                {toPersianDigits(rawTotal.toLocaleString("fa-IR"))} تومان
+          <div>
+            <label
+              htmlFor={nationalId}
+              className="block text-xs font-bold text-foreground mb-1"
+            >
+              کد ملی / شناسه ملی (۱۰ یا ۱۱ رقم) *
+            </label>
+            <div className="relative">
+              <Input
+                id={nationalId}
+                type="text"
+                dir="ltr"
+                placeholder="10101234567"
+                {...register("national_id")}
+                className="pr-9 text-left font-mono"
+              />
+              <Hash className="absolute right-3 top-2.5 h-4 w-4 text-muted-foreground pointer-events-none" />
+            </div>
+            {errors.national_id && (
+              <p className="mt-1 text-[11px] text-destructive font-bold">
+                {errors.national_id.message}
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label
+              htmlFor={noteId}
+              className="block text-xs font-bold text-foreground mb-1"
+            >
+              توضیحات و نیازمندی‌ها (اختیاری)
+            </label>
+            <Textarea
+              id={noteId}
+              rows={2}
+              placeholder="نکات خاص کمپین، نورپردازی یا زمان‌بندی نصب..."
+              {...register("note")}
+            />
+            {errors.note && (
+              <p className="mt-1 text-[11px] text-destructive font-bold">
+                {errors.note.message}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* برآورد مبلغ */}
+        <div className="rounded-xl bg-muted/50 p-3.5 space-y-2 border border-border text-xs">
+          <div className="flex justify-between items-center">
+            <span className="font-extrabold text-foreground text-sm flex items-center gap-1.5">
+              <CreditCard className="h-4 w-4 text-primary" />
+              <span>برآورد مبلغ:</span>
+            </span>
+            <div className="text-left">
+              <span className="text-base font-black text-primary font-mono block">
+                {formatToman(estimatedTotalRial)}
+              </span>
+              <span className="text-[10px] text-muted-foreground font-semibold">
+                (برآورد موقت بر مبنای روزهای بازه)
               </span>
             </div>
-
-            {discountPercent > 0 && (
-              <div className="flex justify-between items-center text-emerald-600 font-bold">
-                <span className="flex items-center gap-1">
-                  <Sparkles className="h-3.5 w-3.5" />
-                  تخفیف کمپین بلندمدت ({toPersianDigits(discountPercent)}٪):
-                </span>
-                <span className="font-mono">
-                  - {toPersianDigits(discountAmount.toLocaleString("fa-IR"))} تومان
-                </span>
-              </div>
-            )}
-
-            <div className="border-t border-border pt-2 flex justify-between items-center">
-              <span className="font-extrabold text-foreground text-sm">
-                مبلغ برآورد کل:
-              </span>
-              <div className="text-left">
-                <span className="text-base font-black text-primary font-mono block">
-                  {toPersianDigits(estimatedTotal.toLocaleString("fa-IR"))}
-                </span>
-                <span className="text-[10px] text-muted-foreground font-semibold">تومان (بدون احتساب مالیات)</span>
-              </div>
-            </div>
           </div>
-
-          {/* دکمه ارسال نهایی */}
-          <Button
-            type="submit"
-            disabled={createBookingMutation.isPending}
-            className="w-full h-11 text-sm font-black"
-          >
-            {createBookingMutation.isPending ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span>در حال ثبت اولیه درخواست...</span>
-              </>
-            ) : (
-              <span>ثبت درخواست رزرو و بررسی اولیه</span>
-            )}
-          </Button>
-
-          {/* متن اطمینان‌بخشی و پشتیبانی */}
-          <div className="flex items-center justify-center gap-1.5 text-center text-[11px] text-muted-foreground font-medium">
-            <ShieldCheck className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-            <span>قفل ۴۸ ساعته سازه پس از تایید اولیه کارشناسان اعمال می‌گردد</span>
-          </div>
-        </form>
-      </Card>
-
-      {/* مودال تایید ثبت درخواست و کد رهگیری */}
-      <Dialog
-        open={!!successResponse}
-        onOpenChange={(open) => !open && setSuccessResponse(null)}
-      >
-        <DialogContent className="max-w-md text-right">
-          <DialogHeader>
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-600 mx-auto mb-2">
-              <CheckCircle2 className="h-6 w-6" />
-            </div>
-            <DialogTitle className="text-center text-lg font-black text-foreground">
-              درخواست رزرو اولیه با موفقیت ثبت شد
-            </DialogTitle>
-            <DialogDescription className="text-center text-xs text-muted-foreground leading-relaxed pt-1">
-              {successResponse?.message ||
-                "اطلاعات درخواست شما در سامانه ثبت گردید و کارشناسان ما جهت هماهنگی نهایی با شما تماس خواهند گرفت."}
-            </DialogDescription>
-          </DialogHeader>
-
-          {successResponse && (
-            <div className="space-y-4 pt-2">
-              <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 text-center">
-                <span className="text-xs font-bold text-muted-foreground block mb-1">
-                  کد رهگیری اختصاصی پرونده:
-                </span>
-                <div className="flex items-center justify-center gap-2">
-                  <span className="font-mono text-xl font-black text-primary tracking-widest">
-                    {successResponse.trackingCode}
-                  </span>
-                  <Button
-                    type="button"
-                    size="iconSm"
-                    variant="ghost"
-                    onClick={handleCopyTrackingCode}
-                    title="کپی در کلیپ‌بورد"
-                  >
-                    {copiedTracking ? (
-                      <Check className="h-4 w-4 text-emerald-600" />
-                    ) : (
-                      <Copy className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
-              </div>
-
-              <div className="rounded-xl bg-muted/60 p-3.5 text-xs text-muted-foreground space-y-1.5">
-                <div className="flex justify-between">
-                  <span>نام سازه:</span>
-                  <span className="font-bold text-foreground">
-                    {successResponse.bookingDetails?.structureTitle}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>نام متقاضی / برند:</span>
-                  <span className="font-bold text-foreground">
-                    {successResponse.bookingDetails?.brandName}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>مبلغ برآورد:</span>
-                  <span className="font-bold text-primary font-mono">
-                    {formatToman(successResponse.bookingDetails?.totalPrice || 0)}
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-center gap-2 pt-2">
-                <Button
-                  onClick={() => setSuccessResponse(null)}
-                  className="w-full"
-                >
-                  متوجه شدم، بازگشت
-                </Button>
-              </div>
-            </div>
+          {errors.total_amount && (
+            <p className="mt-1 text-[11px] text-destructive font-bold">
+              {errors.total_amount.message}
+            </p>
           )}
-        </DialogContent>
-      </Dialog>
-    </>
+        </div>
+
+        {/* دکمه ثبت درخواست رزرو */}
+        <Button
+          type="submit"
+          onClick={handleActionClick}
+          disabled={createBookingMutation.isPending || isSubmitting}
+          className="w-full h-11 text-sm font-black"
+        >
+          {createBookingMutation.isPending || isSubmitting ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin ml-2" />
+              <span>در حال ارسال درخواست...</span>
+            </>
+          ) : (
+            <span>ثبت درخواست رزرو</span>
+          )}
+        </Button>
+
+        {/* راهنمای متن رزرو */}
+        <div className="flex items-start gap-2 p-2.5 rounded-lg bg-blue-50/50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/50 text-[11px] text-muted-foreground font-medium leading-relaxed">
+          <ShieldCheck className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+          <span>
+            پس از بررسی و تأیید اولیه توسط مدیر، سازه برای ۴۸ ساعت جهت قرارداد قفل می‌شود.
+          </span>
+        </div>
+      </form>
+    </Card>
   );
 }

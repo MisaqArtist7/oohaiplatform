@@ -6,8 +6,7 @@ import {
   AdminUser,
   BookingAuditLog,
 } from "@/features/admin";
-import { BookingTimelineItem } from "@/features/bookings";
-import { initialClientBookings, mediaOwnerApplicationsStore } from "./client-dashboard-data";
+import { mediaOwnerApplicationsStore } from "./client-dashboard-data";
 
 // نقش‌های موجود در سامانه OOHAI (تنها ۳ نقش مجاز مطابق سند)
 export const initialAdminRoles: AdminRole[] = [
@@ -39,10 +38,6 @@ export const initialAdminRoles: AdminRole[] = [
 
 // لیست اولیه رزروهای سیستمی جهت مانیتورینگ ادمین
 export const initialAdminBookings: AdminBooking[] = [
-  ...initialClientBookings.map((b) => ({
-    ...b,
-    rejectionReason: undefined,
-  })),
   {
     id: "BK-9120",
     trackingCode: "BM-MOD-9120",
@@ -370,14 +365,15 @@ export function issueAdminProforma(
   const nowStr = new Date().toLocaleDateString("fa-IR");
   const proformaDocId = `DOC-PF-${bookingId}`;
 
-  item.proforma = {
+  const proforma = {
     id: proformaDocId,
     number: proformaNumber || `PF-1403-${Math.floor(1000 + Math.random() * 9000)}`,
     issueDate: nowStr,
     expiresAt: "۲ روز کاری آینده",
-    amount: amount || item.totalPrice,
+    amount: amount || item.totalPrice || 0,
     downloadUrl: fileUrl || `/api/v1/client/bookings/documents/${proformaDocId}/download`,
   };
+  item.proforma = proforma;
 
   item.status = {
     value: "proforma_issued",
@@ -388,18 +384,18 @@ export function issueAdminProforma(
   item.documents = item.documents || [];
   item.documents.unshift({
     id: proformaDocId,
-    title: `پیش‌فاکتور رسمی شماره ${item.proforma.number}`,
+    title: `پیش‌فاکتور رسمی شماره ${proforma.number}`,
     type: "proforma",
     typeLabel: "پیش‌فاکتور رسمی",
     date: nowStr,
     fileSize: "۱.۶ مگابایت (PDF)",
-    downloadUrl: item.proforma.downloadUrl,
+    downloadUrl: proforma.downloadUrl,
   });
 
   item.timeline.unshift({
     id: `log-${Date.now()}`,
     title: "صدور و الصاق پیش‌فاکتور رسمی الکترونیک",
-    description: `پیش‌فاکتور شماره ${item.proforma.number} به مبلغ ${item.proforma.amount.toLocaleString("fa-IR")} تومان صادر و لینک دانلود امن فعال شد.`,
+    description: `پیش‌فاکتور شماره ${proforma.number} به مبلغ ${proforma.amount.toLocaleString("fa-IR")} تومان صادر و لینک دانلود امن فعال شد.`,
     timestamp: `${nowStr} - هم‌اکنون`,
     actor: "امور مالی پلتفرم OOHAI",
     status: "proforma_issued",
@@ -415,7 +411,7 @@ export function issueAdminProforma(
     previousStatus: "locked_for_contract",
     newStatus: "proforma_issued",
     timestamp: `${nowStr} - هم‌اکنون`,
-    note: `شماره پیش‌فاکتور: ${item.proforma.number}`,
+    note: `شماره پیش‌فاکتور: ${proforma.number}`,
   });
 
   return item;
@@ -530,7 +526,7 @@ export function transitionAdminBookingStatus(
     description: note || `تغییر دستی وضعیت از ${prev} به ${newStatusValue}`,
     timestamp: `${nowStr} - هم‌اکنون`,
     actor: "مدیریت ارشد سیستم",
-    status: newStatusValue as BookingTimelineItem["status"],
+    status: newStatusValue as string,
     isDone: true,
     isCurrent: true,
   });

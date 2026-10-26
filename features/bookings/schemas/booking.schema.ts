@@ -1,80 +1,79 @@
 import { z } from "zod";
+import { toEnglishDigits } from "@/shared/lib/digits";
+
+function getTodayIsoDate(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 
 /**
- * الگوی شماره موبایل معتبر ایران (۰۹۱۲۳۴۵۶۷۸۹)
+ * اسکیمای ولیدیشن فرم ثبت درخواست رزرو سازه دقیقاً مطابق سند بک‌اند
  */
-const iranPhoneRegex = /^09[0-9]{9}$/;
-
-/**
- * اسکیمای اعتبارسنجی ثبت درخواست رزرو سازه
- */
-export const bookingRequestSchema = z.object({
-  structureId: z.string().min(1, "انتخاب سازه تبلیغاتی الزامی است"),
-  fullName: z
-    .string()
-    .min(3, "نام و نام خانوادگی باید حداقل ۳ کاراکتر باشد")
-    .max(80, "نام و نام خانوادگی نمی‌تواند بیش از ۸۰ کاراکتر باشد"),
-  phone: z
-    .string()
-    .regex(iranPhoneRegex, "شماره موبایل نامعتبر است (مثال: ۰۹۱۲۳۴۵۶۷۸۹)"),
-  brandName: z
-    .string()
-    .min(2, "نام برند یا شرکت متقاضی الزامی است")
-    .max(80, "نام برند نمی‌تواند بیش از ۸۰ کاراکتر باشد"),
-  startDate: z.string().min(8, "تاریخ شروع اکران الزامی است"),
-  endDate: z.string().min(8, "تاریخ پایان اکران الزامی است"),
-  durationDays: z.number().int().min(1, "حداقل دوره اکران باید ۱ روز باشد"),
-  estimatedPrice: z.number().optional(),
-  notes: z.string().max(500, "یادداشت نمی‌تواند بیش از ۵۰۰ کاراکتر باشد").optional(),
-});
-
-export type BookingRequestFormValues = z.infer<typeof bookingRequestSchema>;
-
-/**
- * اسکیمای ثبت و ارسال فیش واریز ساتنا یا چک صیادی
- */
-export const paymentSubmissionSchema = z
+export const createBookingSchema = z
   .object({
-    bookingId: z.string().min(1, "شناسه پرونده رزرو الزامی است"),
-    method: z.enum(["satna", "sayad_check"], {
-      error: "روش پرداخت باید حواله ساتنا یا چک صیادی باشد",
-    }),
-    amount: z
+    structure_id: z
       .number()
-      .min(100000, "مبلغ پرداختی باید حداقل ۱۰۰٬۰۰۰ تومان باشد"),
-    bankName: z.string().optional(),
-    trackingCode: z.string().optional(),
-    checkSerial: z.string().optional(),
-    checkSayadId: z.string().optional(),
-    dueDate: z.string().optional(),
-    receiptUrl: z.string().optional(),
-    notes: z.string().max(500).optional(),
+      .int()
+      .positive("شناسه سازه نامعتبر است"),
+    start_date: z
+      .string()
+      .min(1, "تاریخ شروع الزامی است")
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "فرمت تاریخ شروع باید YYYY-MM-DD باشد")
+      .refine(
+        (val) => val >= getTodayIsoDate(),
+        "تاریخ شروع نمی‌تواند در گذشته باشد"
+      ),
+    end_date: z
+      .string()
+      .min(1, "تاریخ پایان الزامی است")
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "فرمت تاریخ پایان باید YYYY-MM-DD باشد"),
+    company_name: z
+      .string()
+      .trim()
+      .min(1, "نام شرکت یا برند الزامی است")
+      .max(120, "نام شرکت نمی‌تواند بیش از ۱۲۰ کاراکتر باشد"),
+    national_id: z
+      .string()
+      .min(1, "کد ملی یا شناسه ملی الزامی است")
+      .refine(
+        (val) => {
+          const cleaned = toEnglishDigits(val).trim();
+          return /^\d{10}$|^\d{11}$/.test(cleaned);
+        },
+        "کد ملی (۱۰ رقم) یا شناسه ملی (۱۱ رقم) باید فقط شامل ارقام باشد"
+      ),
+    note: z.string().max(1000, "توضیحات نمی‌تواند بیش از ۱۰۰۰ کاراکتر باشد").optional(),
+    total_amount: z
+      .number()
+      .int()
+      .positive("مبلغ برآورد باید بزرگتر از صفر باشد"),
   })
-  .superRefine((data, ctx) => {
-    if (data.method === "satna" && !data.trackingCode?.trim()) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["trackingCode"],
-        message: "کد پیگیری بانکی برای پرداخت ساتنا الزامی است",
-      });
-    }
-
-    if (data.method === "sayad_check") {
-      if (!data.checkSayadId?.trim() || data.checkSayadId.trim().length !== 16) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["checkSayadId"],
-          message: "شناسه ۱۶ رقمی صیادی چک الزامی و باید دقیقاً ۱۶ رقم باشد",
-        });
-      }
-      if (!data.dueDate?.trim()) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["dueDate"],
-          message: "تاریخ سررسید چک الزامی است",
-        });
-      }
-    }
+  .refine((data) => data.end_date > data.start_date, {
+    message: "تاریخ پایان باید بعد از تاریخ شروع باشد",
+    path: ["end_date"],
   });
+
+export type CreateBookingFormValues = z.infer<typeof createBookingSchema>;
+
+/**
+ * اسکیمای ثبت و ارسال فیش واریز ساتنا یا چک صیادی (نگهداری برای تسک ۷)
+ */
+export const paymentSubmissionSchema = z.object({
+  bookingId: z.string().min(1, "شناسه پرونده رزرو الزامی است"),
+  method: z.enum(["satna", "sayad_check"]),
+  amount: z
+    .number()
+    .min(100000, "مبلغ پرداختی باید حداقل ۱۰۰٬۰۰۰ تومان باشد"),
+  bankName: z.string().optional(),
+  trackingCode: z.string().optional(),
+  checkSerial: z.string().optional(),
+  checkSayadId: z.string().optional(),
+  dueDate: z.string().optional(),
+  receiptUrl: z.string().optional(),
+  notes: z.string().max(500).optional(),
+});
 
 export type PaymentSubmissionFormValues = z.infer<typeof paymentSubmissionSchema>;

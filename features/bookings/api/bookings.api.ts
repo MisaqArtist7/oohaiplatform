@@ -1,143 +1,80 @@
+import { http, QueryParams } from "@/shared/lib/http";
 import {
-  ClientBooking,
-  PaymentSubmissionInput,
+  Page,
+  fromResource,
+  LaravelResourceResponse,
+} from "@/shared/lib/pagination";
+import {
+  Booking,
+  CreateBookingPayload,
+  BookingListFilters,
 } from "../types";
-import { clientBookingsStore } from "@/lib/client-dashboard-data";
-import { BookingRequestInput, BookingResponse } from "@/features/structures/types";
 
+/**
+ * ثبت درخواست رزرو سازه (POST /api/v1/client/bookings)
+ * پشتیبانی از هر دو فرمت احتمالی پاسخ ۲۰۱ سرور ({ data: Booking } یا خود Booking)
+ */
+export async function createBooking(
+  payload: CreateBookingPayload
+): Promise<Booking> {
+  const response = await http.post<{ data?: Booking } & Partial<Booking>>(
+    "/client/bookings",
+    payload as unknown as Record<string, unknown>
+  );
 
-export async function fetchClientBookings(
-  status: string = "all",
-  search: string = ""
-): Promise<{ bookings: ClientBooking[]; counts: Record<string, number> }> {
-  try {
-    const params = new URLSearchParams();
-    if (status && status !== "all") params.append("status", status);
-    if (search) params.append("search", search);
-
-    const res = await fetch(`/api/v1/client/bookings?${params.toString()}`, {
-      cache: "no-store",
-    });
-
-    if (!res.ok) throw new Error("Failed to fetch client bookings");
-    const json = await res.json();
-    return {
-      bookings: json.data || clientBookingsStore,
-      counts: json.counts || {},
-    };
-  } catch {
-    let items = [...clientBookingsStore];
-    if (status && status !== "all") {
-      items = items.filter((b) => b.status.value === status);
-    }
-    if (search) {
-      const q = search.toLowerCase();
-      items = items.filter(
-        (b) =>
-          b.trackingCode.toLowerCase().includes(q) ||
-          b.structure.title.toLowerCase().includes(q) ||
-          b.structure.code.toLowerCase().includes(q)
-      );
-    }
-    return {
-      bookings: items,
-      counts: {
-        all: clientBookingsStore.length,
-        pending_review: clientBookingsStore.filter((b) => b.status.value === "pending_review").length,
-        awaiting_payment: clientBookingsStore.filter((b) => b.status.value === "awaiting_payment").length,
-        active: clientBookingsStore.filter((b) => b.status.value === "active").length,
-        cancelled: clientBookingsStore.filter((b) => b.status.value === "cancelled").length,
-        completed: clientBookingsStore.filter((b) => b.status.value === "completed").length,
-      },
-    };
+  if (
+    response &&
+    typeof response === "object" &&
+    response.data &&
+    typeof response.data === "object" &&
+    "uuid" in response.data
+  ) {
+    return response.data as Booking;
   }
+
+  return response as Booking;
 }
 
-export async function fetchClientBookingById(
-  bookingId: string
-): Promise<ClientBooking | null> {
-  try {
-    const res = await fetch(`/api/v1/client/bookings/${bookingId}`, {
-      cache: "no-store",
-    });
-    if (!res.ok) throw new Error("Failed to fetch booking details");
-    const json = await res.json();
-    return json.data;
-  } catch {
-    return (
-      clientBookingsStore.find(
-        (b) =>
-          b.id.toLowerCase() === bookingId.toLowerCase() ||
-          b.trackingCode.toLowerCase() === bookingId.toLowerCase()
-      ) || null
-    );
+/**
+ * دریافت لیست رزروهای مشتری جاری با فیلتر وضعیت و صفحه‌بندی (GET /api/v1/client/bookings)
+ */
+export async function listBookings(
+  filters: BookingListFilters = {}
+): Promise<Page<Booking>> {
+  const query: QueryParams = {
+    page: filters.page ?? 1,
+    per_page: filters.per_page ?? 15,
+  };
+
+  if (filters.status && filters.status !== "all") {
+    query.status = filters.status;
   }
+
+  const response = await http.get<LaravelResourceResponse<Booking>>(
+    "/client/bookings",
+    { query }
+  );
+
+  return fromResource(response);
 }
 
-export async function fetchProformaDownloadToken(
-  documentId: string
-): Promise<{
-  success: boolean;
-  downloadUrl: string;
-  secureToken: string;
-  expiresAt: string;
-  expiresInSeconds: number;
-}> {
-  try {
-    const res = await fetch(`/api/v1/client/bookings/documents/${documentId}/download`, {
-      cache: "no-store",
-    });
-    if (!res.ok) throw new Error("Failed to generate download link");
-    return await res.json();
-  } catch (error) {
-    console.warn("Fallback to simulated download token:", error);
-    const token = `sec_tok_${Math.random().toString(36).substring(2, 10)}`;
-    return {
-      success: true,
-      downloadUrl: `/api/v1/client/bookings/documents/${documentId}/download?format=file&token=${token}`,
-      secureToken: token,
-      expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
-      expiresInSeconds: 900,
-    };
+/**
+ * دریافت اطلاعات کامل یک رزرو با UUID (GET /api/v1/client/bookings/{uuid})
+ */
+export async function getBooking(uuid: string): Promise<Booking> {
+  const response = await http.get<{ data?: Booking } & Partial<Booking>>(
+    `/client/bookings/${encodeURIComponent(uuid)}`
+  );
+
+  if (
+    response &&
+    typeof response === "object" &&
+    response.data &&
+    typeof response.data === "object" &&
+    "uuid" in response.data
+  ) {
+    return response.data as Booking;
   }
-}
 
-export async function createBookingRequestApi(
-  data: BookingRequestInput
-): Promise<BookingResponse> {
-  const res = await fetch("/api/v1/client/bookings", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
-  return res.json();
-}
-
-export async function submitBookingPaymentApi(
-  data: PaymentSubmissionInput
-): Promise<{ success: boolean; data?: ClientBooking; message?: string }> {
-  const res = await fetch(`/api/v1/client/bookings/${data.bookingId}/payment`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
-  return res.json();
-}
-
-export async function submitBookingPayment(
-  paymentData: PaymentSubmissionInput
-): Promise<{ success: boolean; message: string; data?: ClientBooking }> {
-  const res = await fetch(`/api/v1/client/bookings/${paymentData.bookingId}/payment`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(paymentData),
-  });
-
-  const json = await res.json();
-  if (!res.ok) {
-    throw new Error(json.message || "خطا در ثبت پرداخت");
-  }
-  return json;
+  return response as Booking;
 }

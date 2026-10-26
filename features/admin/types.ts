@@ -1,5 +1,3 @@
-import type { ClientBooking } from "@/features/bookings/types";
-
 export type AdminBookingStatus =
   | "pending_review"
   | "locked_for_contract"
@@ -10,7 +8,84 @@ export type AdminBookingStatus =
   | "rejected"
   | "cancelled";
 
-export interface AdminBooking extends ClientBooking {
+export interface AdminBookingTimelineItem {
+  id: string;
+  title: string;
+  description: string;
+  timestamp: string;
+  actor: string;
+  status: string;
+  isDone: boolean;
+  isCurrent?: boolean;
+}
+
+export interface AdminBookingPaymentItem {
+  id: string;
+  method: string;
+  methodLabel?: string;
+  amount: number;
+  trackingCode?: string;
+  bankName?: string;
+  checkSerial?: string;
+  checkSayadId?: string;
+  dueDate?: string;
+  submittedAt?: string;
+  status: string;
+  statusLabel?: string;
+  receiptUrl?: string;
+  notes?: string;
+}
+
+export interface AdminBookingDocumentItem {
+  id: string;
+  title: string;
+  type?: string;
+  typeLabel?: string;
+  date?: string;
+  fileSize?: string;
+  downloadUrl?: string;
+  requiresSignature?: boolean;
+}
+
+export interface AdminBooking {
+  id: string;
+  trackingCode: string;
+  structure: {
+    id: string;
+    code: string;
+    title: string;
+    address: string;
+    district: string;
+    dimensions: string;
+    image: string;
+    type: string;
+    category: string;
+  };
+  startDate: string;
+  endDate: string;
+  durationDays: number;
+  totalPrice: number;
+  status: {
+    value: string;
+    label: string;
+    color?: string;
+  };
+  brandName: string;
+  contactPerson: string;
+  contactPhone: string;
+  createdAt: string;
+  lockedUntil?: string;
+  proforma?: {
+    id: string;
+    number: string;
+    issueDate: string;
+    expiresAt: string;
+    amount: number;
+    downloadUrl: string;
+  };
+  timeline: AdminBookingTimelineItem[];
+  payments: AdminBookingPaymentItem[];
+  documents: AdminBookingDocumentItem[];
   customer?: {
     fullName: string;
     companyName: string;
