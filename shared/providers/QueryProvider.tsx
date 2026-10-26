@@ -21,7 +21,7 @@ export default function QueryProvider({ children }: QueryProviderProps) {
   const pathname = usePathname();
 
   const [queryClient] = useState(() => {
-    let clientInstance: QueryClient;
+    let clientRef: QueryClient | null = null;
 
     const handleAuthRedirect = () => {
       const isAuthPage =
@@ -30,15 +30,15 @@ export default function QueryProvider({ children }: QueryProviderProps) {
         pathname?.startsWith("/verify-otp");
 
       if (!isAuthPage) {
-        if (clientInstance) {
-          clientInstance.removeQueries({ queryKey: SESSION_QUERY_KEY });
+        if (clientRef) {
+          clientRef.removeQueries({ queryKey: SESSION_QUERY_KEY });
         }
         const nextParam = pathname ? `?next=${encodeURIComponent(pathname)}` : "";
         router.replace(`/login${nextParam}`);
       }
     };
 
-    clientInstance = new QueryClient({
+    const instance = new QueryClient({
       queryCache: new QueryCache({
         onError: (error) => {
           const status =
@@ -82,7 +82,8 @@ export default function QueryProvider({ children }: QueryProviderProps) {
       },
     });
 
-    return clientInstance;
+    clientRef = instance;
+    return instance;
   });
 
   return (

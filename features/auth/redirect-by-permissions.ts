@@ -7,6 +7,7 @@ export function getRedirectPath(
   _permissions: string[] = [],
   roleOrRoles?: unknown
 ): string {
+  void _permissions;
   let role = "client";
   if (typeof roleOrRoles === "string") {
     role = roleOrRoles;

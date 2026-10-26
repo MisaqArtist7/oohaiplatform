@@ -26,7 +26,6 @@ import {
   apiRequestOtp,
   apiVerifyOtp,
   maskPhone,
-  toEnDigits,
   toFaDigits,
 } from "../api/auth.api";
 import { toEnglishDigits } from "@/shared/lib/digits";
@@ -123,13 +122,6 @@ export function AuthCard({ initialMode = "login" }: AuthCardProps) {
   const [phone, setPhone] = useState(queryPhone);
   const [name, setName] = useState("");
   const [otp, setOtp] = useState("");
-
-  // به‌روزرسانی شماره در صورت تغییر پارامتر URL
-  useEffect(() => {
-    if (queryPhone && !phone) {
-      setPhone(queryPhone);
-    }
-  }, [queryPhone, phone]);
 
   // خطاهای سرور و فیلدها
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { MapPin, Sparkles, User, Menu, X, Building2, ShieldAlert, CalendarCheck } from "lucide-react";
 import LogoutButton from "@/shared/components/LogoutButton";

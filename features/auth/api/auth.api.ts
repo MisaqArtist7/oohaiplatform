@@ -170,7 +170,7 @@ async function apiFetch<T>(
       data,
       errorMessage: null,
     };
-  } catch (err) {
+  } catch {
     return {
       ok: false,
       status: 0,
@@ -268,7 +268,7 @@ export async function apiVerifyOtp(payload: VerifyOtpPayload): Promise<{
       user,
       redirectUrl,
     };
-  } catch (err) {
+  } catch {
     return {
       ok: false,
       status: 0,
