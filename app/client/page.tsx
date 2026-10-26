@@ -45,7 +45,14 @@ export default function ClientDashboardPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/client/proposals"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-primary/30 bg-primary/10 px-3.5 py-2 text-xs font-bold text-primary hover:bg-primary/20 transition-all shadow-2xs"
+          >
+            <Sparkles className="h-4 w-4" />
+            <span>پیشنهاد هوشمند</span>
+          </Link>
           <Link
             href="/client/bookings"
             className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-3.5 py-2 text-xs font-bold text-foreground hover:bg-muted transition-all"

@@ -16,14 +16,22 @@ export function formatJalali(iso: DateInput, withTime = false): string {
   if (!iso) return "";
 
   let date: Date;
+  let isUtcZ = false;
+
   if (iso instanceof Date) {
     date = iso;
   } else {
     const trimmed = iso.trim();
     if (!trimmed) return "";
+    isUtcZ = /Z$/i.test(trimmed);
     date = parseISO(trimmed);
     if (!isValid(date)) {
       date = new Date(trimmed);
+    }
+    // تبدیل زمان‌های UTC (دارای پسوند Z) به منطقه زمانی رسمی ایران (Asia/Tehran)
+    if (isUtcZ && isValid(date)) {
+      const tehranStr = date.toLocaleString("en-US", { timeZone: "Asia/Tehran" });
+      date = new Date(tehranStr);
     }
   }
 

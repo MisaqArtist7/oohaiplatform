@@ -242,7 +242,7 @@ export default function MediaOwnerRequestPage() {
           </Link>
 
           <Link
-            href="/dashboard/proposals"
+            href="/client/proposals"
             className="flex shrink-0 items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
           >
             <Sparkles className="h-4 w-4 text-primary" />

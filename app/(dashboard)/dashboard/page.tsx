@@ -26,7 +26,7 @@ structures: "/structures",
 bookings: "/dashboard/bookings",
 booking: (id: string) => `/dashboard/bookings/${id}`,
 mediaOwnerRequest: "/mediaOwnerRequest",
-proposals: "/dashboard/proposals",
+proposals: "/client/proposals",
 };
 
 /* ───────────────────────── تایپ‌ها و وضعیت‌ها ───────────────────────── */

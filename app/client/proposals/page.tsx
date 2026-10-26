@@ -1,11 +1,21 @@
+import { Suspense } from "react";
 import { Metadata } from "next";
-import { ProposalsView } from "@/features/proposals";
+import { ProposalsListView } from "@/features/proposals";
 
 export const metadata: Metadata = {
-  title: "مشاوره و پیشنهاد کمپین (AI Planner) | بیلبورد مارکت",
-  description: "طراحی هوشمند سبد رسانه تبلیغات محیطی و بیلبورد بر اساس بودجه و سناریوی بازاریابی با هوش مصنوعی.",
+  title: "تاریخچه پیشنهادات و کمپین‌های هوشمند | بیلبورد مارکت",
+  description:
+    "مشاهده فهرست سناریوهای بازاریابی ثبت‌شده و نتایج پردازش هوش مصنوعی برای سبد رسانه تبلیغات محیطی.",
 };
 
 export default function ClientProposalsPage() {
-  return <ProposalsView />;
+  return (
+    <Suspense
+      fallback={
+        <div className="h-64 rounded-2xl border border-border bg-card animate-pulse" />
+      }
+    >
+      <ProposalsListView />
+    </Suspense>
+  );
 }
