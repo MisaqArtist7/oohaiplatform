@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { structuresStore, addNewStructure } from "@/lib/mock-data";
-import { Structure } from "@/types/structure";
+import { Structure } from "@/features/structures";
 
 export async function GET(request: NextRequest) {
   try {

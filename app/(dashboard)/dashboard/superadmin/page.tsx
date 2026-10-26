@@ -11,13 +11,13 @@ import {
   ArrowRight,
   RefreshCw,
 } from "lucide-react";
-import RequestsTable from "./RequestsTable";
 import {
+  RequestsTable,
   type MediaOwnerRequestItem,
   extractRequestsList,
   getStatusBadge,
   DEFAULT_SAMPLE_REQUESTS,
-} from "./types";
+} from "@/features/admin";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "https://oohaiplatform.ir/api/v1";
 
@@ -26,7 +26,7 @@ export const instant = false;
 async function logoutAction() {
   "use server";
   const store = await cookies();
-  const token = store.get("token")?.value;
+  const token = store.get("access_token")?.value || store.get("token")?.value;
 
   if (token) {
     await fetch(`${API}/auth/logout`, {
@@ -35,6 +35,8 @@ async function logoutAction() {
     }).catch(() => null);
   }
 
+  store.delete("access_token");
+  store.delete("user_info");
   store.delete("token");
   store.delete("user");
   redirect("/register");
@@ -42,12 +44,14 @@ async function logoutAction() {
 
 export default async function SuperAdminDashboardPage() {
   const store = await cookies();
-  const token = store.get("token")?.value;
+  const token = store.get("access_token")?.value || store.get("token")?.value;
   if (!token) redirect("/register?r=superadmin-no-token");
 
   let userName = "مدیر ارشد سیستم";
   try {
-    const user = JSON.parse(store.get("user")?.value ?? "null");
+    const user = JSON.parse(
+      store.get("user_info")?.value ?? store.get("user")?.value ?? "null"
+    );
     if (user?.name) userName = user.name;
   } catch {
     // fallback

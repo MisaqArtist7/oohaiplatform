@@ -3,7 +3,9 @@ import {
   StructureCategory,
   StructureType,
   StructureFilters,
-} from "@/types/structure";
+  BookingRequestInput,
+  BookingResponse,
+} from "../types";
 import {
   mockStructures,
   mockStructureTypes,
@@ -78,7 +80,9 @@ export async function fetchStructureById(id: string): Promise<Structure | null> 
   }
 }
 
-export async function createStructureApi(data: StructureFormValues): Promise<{ success: boolean; data?: Structure; message?: string }> {
+export async function createStructureApi(
+  data: StructureFormValues
+): Promise<{ success: boolean; data?: Structure; message?: string }> {
   const res = await fetch("/api/v1/structures", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -97,4 +101,22 @@ export async function updateStructureApi(
     body: JSON.stringify(data),
   });
   return res.json();
+}
+
+export async function submitBookingRequest(
+  bookingInput: BookingRequestInput
+): Promise<BookingResponse> {
+  const res = await fetch("/api/v1/client/bookings", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(bookingInput),
+  });
+
+  const json = await res.json();
+  if (!res.ok) {
+    throw new Error(json.message || "خطا در ثبت رزرو");
+  }
+  return json;
 }

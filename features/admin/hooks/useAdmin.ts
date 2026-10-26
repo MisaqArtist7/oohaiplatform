@@ -15,7 +15,7 @@ import {
   assignRoleToUserApi,
   removeRoleFromUserApi,
 } from "../api/admin.api";
-import { AdminBookingFilterParams } from "@/types/admin-dashboard";
+import { AdminBookingFilterParams } from "../types";
 
 export const adminQueryKeys = {
   all: ["admin"] as const,

@@ -1,9 +1,30 @@
 import {
   ClientBooking,
   PaymentSubmissionInput,
-} from "@/types/client-dashboard";
+} from "../types";
 import { clientBookingsStore } from "@/lib/client-dashboard-data";
-import { BookingRequestInput, BookingResponse } from "@/types/structure";
+import { BookingRequestInput, BookingResponse } from "@/features/structures/types";
+
+export interface LocationCity {
+  id: number;
+  name: string;
+  province?: string;
+  slug?: string;
+}
+
+export async function fetchLocations(): Promise<LocationCity[]> {
+  try {
+    const res = await fetch("/api/v1/locations", {
+      cache: "no-store",
+    });
+    if (!res.ok) throw new Error("Failed to fetch locations");
+    const json = await res.json();
+    return json.data || [];
+  } catch (error) {
+    console.warn("Failed to fetch locations:", error);
+    return [];
+  }
+}
 
 export async function fetchClientBookings(
   status: string = "all",
@@ -63,7 +84,41 @@ export async function fetchClientBookingById(
     const json = await res.json();
     return json.data;
   } catch {
-    return clientBookingsStore.find((b) => b.id === bookingId) || null;
+    return (
+      clientBookingsStore.find(
+        (b) =>
+          b.id.toLowerCase() === bookingId.toLowerCase() ||
+          b.trackingCode.toLowerCase() === bookingId.toLowerCase()
+      ) || null
+    );
+  }
+}
+
+export async function fetchProformaDownloadToken(
+  documentId: string
+): Promise<{
+  success: boolean;
+  downloadUrl: string;
+  secureToken: string;
+  expiresAt: string;
+  expiresInSeconds: number;
+}> {
+  try {
+    const res = await fetch(`/api/v1/client/bookings/documents/${documentId}/download`, {
+      cache: "no-store",
+    });
+    if (!res.ok) throw new Error("Failed to generate download link");
+    return await res.json();
+  } catch (error) {
+    console.warn("Fallback to simulated download token:", error);
+    const token = `sec_tok_${Math.random().toString(36).substring(2, 10)}`;
+    return {
+      success: true,
+      downloadUrl: `/api/v1/client/bookings/documents/${documentId}/download?format=file&token=${token}`,
+      secureToken: token,
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+      expiresInSeconds: 900,
+    };
   }
 }
 
@@ -87,4 +142,22 @@ export async function submitBookingPaymentApi(
     body: JSON.stringify(data),
   });
   return res.json();
+}
+
+export async function submitBookingPayment(
+  paymentData: PaymentSubmissionInput
+): Promise<{ success: boolean; message: string; data?: ClientBooking }> {
+  const res = await fetch(`/api/v1/client/bookings/${paymentData.bookingId}/payment`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(paymentData),
+  });
+
+  const json = await res.json();
+  if (!res.ok) {
+    throw new Error(json.message || "خطا در ثبت پرداخت");
+  }
+  return json;
 }

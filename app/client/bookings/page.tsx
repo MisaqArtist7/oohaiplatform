@@ -1,5 +1,5 @@
 import { Metadata } from "next";
-import BookingsListView from "@/components/client/bookings/BookingsListView";
+import { BookingsListView } from "@/features/bookings";
 
 export const metadata: Metadata = {
   title: "رزروهای من | بیلبورد مارکت",

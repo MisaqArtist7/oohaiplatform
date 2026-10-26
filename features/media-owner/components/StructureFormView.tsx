@@ -22,22 +22,18 @@ import {
   Image as ImageIcon,
   Check,
 } from "lucide-react";
-import { StructureStatus } from "@/types/structure";
 import {
-  formatToman,
-  toPersianDigits,
-  mockStructureTypes,
-  mockStructureCategories,
-} from "@/lib/mock-data";
-import { fetchStructureForEdit } from "@/lib/media-owner-api";
-import {
+  StructureStatus,
   structureFormSchema,
   StructureFormValues,
-} from "@/features/structures/schemas/structure.schema";
-import {
   useCreateStructureMutation,
   useUpdateStructureMutation,
-} from "@/features/structures/hooks/useStructures";
+} from "@/features/structures";
+import {
+  formatToman,
+  mockStructureTypes,
+} from "@/lib/mock-data";
+import { fetchStructureForEdit } from "../api/media-owner.api";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Textarea } from "@/shared/components/ui/textarea";

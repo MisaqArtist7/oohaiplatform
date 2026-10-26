@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import MediaOwnerLayoutWrapper from "@/components/media-owner/MediaOwnerLayoutWrapper";
+import { MediaOwnerLayoutWrapper } from "@/features/media-owner";
 
 export const metadata: Metadata = {
   title: {

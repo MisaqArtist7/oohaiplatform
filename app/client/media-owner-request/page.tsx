@@ -1,5 +1,5 @@
 import { Metadata } from "next";
-import MediaOwnerRequestView from "@/components/client/media-owner/MediaOwnerRequestView";
+import { MediaOwnerRequestView } from "@/features/media-owner";
 
 export const metadata: Metadata = {
   title: "درخواست ارتقا به مالک رسانه | بیلبورد مارکت",

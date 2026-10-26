@@ -1,5 +1,5 @@
 import { Metadata } from "next";
-import AdminBookingActionCenterView from "@/components/admin/bookings/AdminBookingActionCenterView";
+import { AdminBookingActionCenterView } from "@/features/admin";
 import { adminBookingsStore } from "@/lib/admin-dashboard-data";
 
 export async function generateStaticParams() {

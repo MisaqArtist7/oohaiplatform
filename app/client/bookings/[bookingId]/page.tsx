@@ -1,5 +1,5 @@
 import { Metadata } from "next";
-import BookingDetailView from "@/components/client/bookings/BookingDetailView";
+import { BookingDetailView } from "@/features/bookings";
 import { initialClientBookings } from "@/lib/client-dashboard-data";
 
 interface BookingPageProps {

@@ -1,5 +1,5 @@
-import { Structure } from "@/types/structure";
-import { getMyStructuresList } from "@/lib/mock-data";
+import { Structure } from "@/features/structures/types";
+import { getMyStructuresList, structuresStore } from "@/lib/mock-data";
 import { MediaOwnerRequestFormValues } from "../schemas/media-owner.schema";
 
 export async function fetchMyStructures(): Promise<Structure[]> {
@@ -15,6 +15,87 @@ export async function fetchMyStructures(): Promise<Structure[]> {
   }
 }
 
+export async function fetchStructureForEdit(
+  id: string
+): Promise<Structure | null> {
+  try {
+    const res = await fetch(`/api/v1/structures/${id}`, {
+      cache: "no-store",
+    });
+    if (!res.ok) throw new Error("Failed to fetch structure details");
+    const json = await res.json();
+    return json.data || null;
+  } catch (error) {
+    console.warn("Fallback to local structure by id:", error);
+    return (
+      structuresStore.find(
+        (s) => s.id === id || s.code === id || s.slug === id
+      ) || null
+    );
+  }
+}
+
+export async function submitCreateStructure(
+  payload: Record<string, unknown> | FormData
+): Promise<{ success: boolean; data: Structure; message: string }> {
+  let options: RequestInit;
+
+  if (payload instanceof FormData) {
+    options = {
+      method: "POST",
+      body: payload,
+    };
+  } else {
+    options = {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    };
+  }
+
+  const res = await fetch("/api/v1/structures", options);
+  const json = await res.json();
+
+  if (!res.ok) {
+    throw new Error(json.message || "خطا در ثبت سازه تبلیغاتی");
+  }
+
+  return json;
+}
+
+export async function submitUpdateStructure(
+  structureId: string,
+  payload: Record<string, unknown> | FormData
+): Promise<{ success: boolean; data: Structure; message: string }> {
+  let options: RequestInit;
+
+  if (payload instanceof FormData) {
+    options = {
+      method: "PUT",
+      body: payload,
+    };
+  } else {
+    options = {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    };
+  }
+
+  const res = await fetch(`/api/v1/structures/${structureId}`, options);
+  const json = await res.json();
+
+  if (!res.ok) {
+    throw new Error(json.message || "خطا در ویرایش سازه تبلیغاتی");
+  }
+
+  return json;
+}
+
 export async function submitMediaOwnerRequestApi(
   data: MediaOwnerRequestFormValues
 ): Promise<{ success: boolean; data?: unknown; message?: string }> {
@@ -24,4 +105,19 @@ export async function submitMediaOwnerRequestApi(
     body: JSON.stringify(data),
   });
   return res.json();
+}
+
+export async function submitMediaOwnerApplication(
+  formData: FormData
+): Promise<{ success: boolean; trackingCode: string; message: string }> {
+  const res = await fetch("/api/v1/media-owner-requests", {
+    method: "POST",
+    body: formData,
+  });
+
+  const json = await res.json();
+  if (!res.ok) {
+    throw new Error(json.message || "خطا در ثبت درخواست ارتقا به مالک رسانه");
+  }
+  return json;
 }

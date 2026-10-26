@@ -1,6 +1,6 @@
 // app/(public)/layout.tsx
-import Header from "@/components/common/Header/page";
-import Footer from "@/components/common/Footer/page";
+import Header from "@/shared/components/layout/Header";
+import Footer from "@/shared/components/layout/Footer";
 
 export default function MarketingLayout({ children }: LayoutProps<"/">) {
     return (

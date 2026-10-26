@@ -2,7 +2,7 @@ import {
   ClientBooking,
   ProposalItem,
   MediaOwnerApplication,
-} from "@/types/client-dashboard";
+} from "@/features/bookings";
 
 export const initialClientBookings: ClientBooking[] = [
   {

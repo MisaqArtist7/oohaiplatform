@@ -1,15 +1,23 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-
-const API = process.env.NEXT_PUBLIC_API_URL ?? "https://oohaiplatform.ir/api/v1";
+import { getBackendUrl } from "@/shared/lib/env";
 
 export async function POST() {
-  const store = await cookies();
-  const token = store.get("token")?.value;
+  let token: string | undefined = undefined;
+  try {
+    const store = await cookies();
+    token =
+      store.get("access_token")?.value ||
+      store.get("token")?.value;
+  } catch {
+    // خطا در دسترسی به کوکی
+  }
 
   if (token) {
     try {
-      await fetch(`${API}/auth/logout`, {
+      const rawBackend = getBackendUrl().replace(/\/+$/, "");
+      const cleanBackend = rawBackend.replace(/\/api\/?$/, "");
+      await fetch(`${cleanBackend}/api/v1/auth/logout`, {
         method: "POST",
         headers: {
           Accept: "application/json",
@@ -17,7 +25,7 @@ export async function POST() {
         },
       });
     } catch {
-      // حتی در صورت عدم پاسخ‌دهی سرور، کوکی‌های محلی را پاک می‌کنیم
+      // خطا نادیده گرفته می‌شود تا عملیات خروج سمت کلاینت مسدود نگردد
     }
   }
 
@@ -26,6 +34,9 @@ export async function POST() {
     message: "خروج با موفقیت انجام شد.",
   });
 
+  // پاک کردن کوکی‌های احراز هویت
+  response.cookies.delete("access_token");
+  response.cookies.delete("user_info");
   response.cookies.delete("token");
   response.cookies.delete("user");
 

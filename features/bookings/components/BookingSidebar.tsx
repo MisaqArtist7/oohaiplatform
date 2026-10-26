@@ -19,7 +19,7 @@ import {
   Calendar,
 } from "lucide-react";
 import { toast } from "sonner";
-import { Structure, BookingResponse } from "@/types/structure";
+import { Structure, BookingResponse } from "@/features/structures";
 import { formatToman, toPersianDigits } from "@/lib/mock-data";
 import {
   bookingRequestSchema,

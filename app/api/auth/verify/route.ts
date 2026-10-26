@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-
-const API = process.env.NEXT_PUBLIC_API_URL ?? "https://oohaiplatform.ir/api/v1";
+import { getBackendUrl } from "@/shared/lib/env";
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
@@ -12,9 +11,22 @@ export async function POST(req: Request) {
     );
   }
 
+  let backendUrl: string;
+  try {
+    const rawBackend = getBackendUrl().replace(/\/+$/, "");
+    const cleanBackend = rawBackend.replace(/\/api\/?$/, "");
+    backendUrl = `${cleanBackend}/api/v1/otp/verify`;
+  } catch (err) {
+    console.error("Backend URL configuration error in verify:", err);
+    return NextResponse.json(
+      { success: false, message: "ارتباط با سرور برقرار نشد." },
+      { status: 502 }
+    );
+  }
+
   let res: Response;
   try {
-    res = await fetch(`${API}/otp/verify`, {
+    res = await fetch(backendUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -32,7 +44,7 @@ export async function POST(req: Request) {
 
   const data = await res.json().catch(() => null);
 
-  // در صورت بروز خطا از سمت بک‌اند (مثلاً ۴۲۲ برای کد اشتباه)
+  // در صورت بروز خطا از سمت بک‌اند (مثلاً ۴۲۲ برای کد اشتباه یا منقضی)
   if (!res.ok || !data?.success) {
     return NextResponse.json(
       data ?? { success: false, message: "تأیید کد با خطا مواجه شد." },
@@ -40,8 +52,8 @@ export async function POST(req: Request) {
     );
   }
 
-  const token: string | undefined = data?.data?.token;
-  const user = data?.data?.user;
+  const token: string | undefined = data?.data?.token || data?.token;
+  const user = data?.data?.user || data?.user;
 
   if (!token || !user) {
     return NextResponse.json(
@@ -50,44 +62,56 @@ export async function POST(req: Request) {
     );
   }
 
-  const cookieOptions = {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax" as const,
-    path: "/",
-    maxAge: 60 * 60 * 24 * 7, // ۷ روز
+  const userRole = user.role || (Array.isArray(user.roles) ? user.roles[0] : "client");
+  const userRoles = Array.isArray(user.roles)
+    ? user.roles
+    : user.role
+      ? [user.role]
+      : ["client"];
+
+  const safeUserInfo = {
+    id: user.id,
+    uuid: user.uuid,
+    name: user.name,
+    role: typeof userRole === "string" ? userRole : userRole?.slug || userRole?.name || "client",
+    roles: userRoles.map((r: unknown) =>
+      typeof r === "string"
+        ? r
+        : (r as { slug?: string; name?: string })?.slug ||
+          (r as { slug?: string; name?: string })?.name ||
+          "client"
+    ),
+    permissions: user.permissions || [],
   };
 
+  // توکن هرگز در بدنه پاسخ کلاینت قرار نمی‌گیرد
   const response = NextResponse.json({
     success: true,
     message: data.message || "ورود با موفقیت انجام شد.",
-    user: {
-      id: user.id,
-      uuid: user.uuid,
-      name: user.name,
-      phone: user.phone,
-      is_active: user.is_active,
-      roles: user.roles,
-      permissions: user.permissions || [],
-    },
+    user: safeUserInfo,
   });
 
-  // ذخیره توکن به صورت امن
-  response.cookies.set("token", token, cookieOptions);
+  // ۱. ذخیره توکن احراز هویت منحصراً در کوکی امن HttpOnly
+  response.cookies.set("access_token", token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 7, // ۷ روز
+  });
 
-  // ذخیره آبجکت کاربر جهت خواندن در سرور کامپوننت‌ها بدون نیاز به کوئری مجدد
-  response.cookies.set(
-    "user",
-    JSON.stringify({
-      id: user.id,
-      uuid: user.uuid,
-      name: user.name,
-      phone: user.phone,
-      roles: user.roles,
-      permissions: user.permissions || [],
-    }),
-    cookieOptions
-  );
+  // ۲. ذخیره موقت اطلاعات عمومی و غیرحساس کاربر در کوکی غیر-HttpOnly (جهت سشن کلاینت)
+  response.cookies.set("user_info", JSON.stringify(safeUserInfo), {
+    httpOnly: false,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 7,
+  });
+
+  // پاک کردن کوکی‌های قدیمی
+  response.cookies.delete("token");
+  response.cookies.delete("user");
 
   return response;
 }

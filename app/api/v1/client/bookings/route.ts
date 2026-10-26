@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { mockStructures, mockBookingsStore } from "@/lib/mock-data";
-import { BookingRequestInput, BookingResponse } from "@/types/structure";
+import { BookingRequestInput, BookingResponse } from "@/features/structures";
 import { clientBookingsStore } from "@/lib/client-dashboard-data";
-import { ClientBooking } from "@/types/client-dashboard";
+import { ClientBooking } from "@/features/bookings";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "https://oohaiplatform.ir/api/v1";
 

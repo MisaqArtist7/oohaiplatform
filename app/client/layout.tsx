@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import ClientLayoutWrapper from "@/components/client/ClientLayoutWrapper";
+import { ClientLayoutWrapper } from "@/shared/components/layout";
 
 export const metadata: Metadata = {
   title: {

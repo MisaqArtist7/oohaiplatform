@@ -1,5 +1,5 @@
 import { Metadata } from "next";
-import StructureFormView from "@/components/media-owner/structures/StructureFormView";
+import { StructureFormView } from "@/features/media-owner";
 
 export const metadata: Metadata = {
   title: "ثبت سازه تبلیغاتی جدید | پنل مالکان رسانه بیلبورد مارکت",

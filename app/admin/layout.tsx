@@ -1,5 +1,5 @@
 import { Metadata } from "next";
-import AdminLayoutWrapper from "@/components/admin/AdminLayoutWrapper";
+import { AdminLayoutWrapper } from "@/features/admin";
 
 export const metadata: Metadata = {
   title: "میز کار مدیریت و مالی | پلتفرم OOHAI",

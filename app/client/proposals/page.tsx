@@ -1,5 +1,5 @@
 import { Metadata } from "next";
-import ProposalsView from "@/components/client/proposals/ProposalsView";
+import { ProposalsView } from "@/features/proposals";
 
 export const metadata: Metadata = {
   title: "مشاوره و پیشنهاد کمپین (AI Planner) | بیلبورد مارکت",

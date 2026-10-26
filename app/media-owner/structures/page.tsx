@@ -1,5 +1,5 @@
 import { Metadata } from "next";
-import MyStructuresListView from "@/components/media-owner/structures/MyStructuresListView";
+import { MyStructuresListView } from "@/features/media-owner";
 
 export const metadata: Metadata = {
   title: "سازه‌های من | پنل مالکان رسانه بیلبورد مارکت",

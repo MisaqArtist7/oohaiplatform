@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
-import { AuthCard } from "@/features/auth/AuthCard";
+import { AuthCard } from "@/features/auth";
 
 export const metadata: Metadata = {
   title: "ورود با شماره موبایل",

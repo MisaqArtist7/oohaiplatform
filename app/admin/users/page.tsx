@@ -1,5 +1,5 @@
 import { Metadata } from "next";
-import AdminUsersManagementView from "@/components/admin/users/AdminUsersManagementView";
+import { AdminUsersManagementView } from "@/features/admin";
 
 export const metadata: Metadata = {
   title: "مدیریت کاربران و نقش‌ها | داشبورد مدیریت OOHAI",

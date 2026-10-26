@@ -31,11 +31,10 @@ import {
   X,
   Building2,
 } from "lucide-react";
-import { ClientBooking } from "@/types/client-dashboard";
-import { fetchProformaDownloadToken } from "@/lib/client-api";
+import { ClientBooking, fetchProformaDownloadToken } from "@/features/bookings";
 import { formatToman, toPersianDigits } from "@/lib/mock-data";
 import { useClientBookingsQuery } from "@/features/bookings/hooks/useBookings";
-import LogoutButton from "@/components/common/LogoutButton";
+import { LogoutButton } from "@/shared/components";
 
 export default function ClientDashboardBookingsPage() {
   const router = useRouter();

@@ -5,8 +5,8 @@ import {
   AdminRole,
   AdminUser,
   BookingAuditLog,
-} from "@/types/admin-dashboard";
-import { BookingTimelineItem } from "@/types/client-dashboard";
+} from "@/features/admin";
+import { BookingTimelineItem } from "@/features/bookings";
 import { initialClientBookings, mediaOwnerApplicationsStore } from "./client-dashboard-data";
 
 // نقش‌های موجود در سامانه OOHAI

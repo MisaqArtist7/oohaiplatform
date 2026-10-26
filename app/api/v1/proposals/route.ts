@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { proposalsStore } from "@/lib/client-dashboard-data";
-import { ProposalItem, ProposalRecommendedStructure } from "@/types/client-dashboard";
+import { ProposalItem, ProposalRecommendedStructure } from "@/features/proposals";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "https://oohaiplatform.ir/api/v1";
 

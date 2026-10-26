@@ -21,7 +21,7 @@ import {
   ShieldCheck,
   RotateCcw,
 } from "lucide-react";
-import LogoutButton from "@/components/common/LogoutButton";
+import LogoutButton from "@/shared/components/LogoutButton";
 
 // تبدیل ارقام فارسی و عربی به انگلیسی
 function toEnDigits(input: string): string {

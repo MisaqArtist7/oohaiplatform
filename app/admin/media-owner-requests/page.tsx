@@ -1,5 +1,5 @@
 import { Metadata } from "next";
-import AdminMediaOwnerRequestsView from "@/components/admin/media-owner/AdminMediaOwnerRequestsView";
+import { AdminMediaOwnerRequestsView } from "@/features/admin";
 
 export const metadata: Metadata = {
   title: "درخواست‌های مالکان رسانه | داشبورد مدیریت OOHAI",

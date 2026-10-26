@@ -26,9 +26,8 @@ import {
   PieChart,
   Plus,
 } from "lucide-react";
-import LogoutButton from "@/components/common/LogoutButton";
-import { fetchLocations, LocationCity, fetchProposals } from "@/lib/client-api";
-import { ProposalItem } from "@/types/client-dashboard";
+import LogoutButton from "@/shared/components/LogoutButton";
+import { fetchLocations, LocationCity, fetchProposals, ProposalItem } from "@/features/proposals";
 import { formatToman, toPersianDigits } from "@/lib/mock-data";
 
 export default function SmartProposalsPage() {
@@ -139,8 +138,24 @@ export default function SmartProposalsPage() {
   };
 
   useEffect(() => {
-    loadProposals();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    let isMounted = true;
+    fetchProposals()
+      .then((items) => {
+        if (isMounted && items && Array.isArray(items)) {
+          setProposalsList(items);
+          setSelectedProposalId((prev) => prev || (items.length > 0 ? items[0].id : null));
+        }
+      })
+      .catch((err) => {
+        console.warn("Error fetching proposals:", err);
+      })
+      .finally(() => {
+        if (isMounted) setLoadingProposals(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const scenarioLength = scenario.trim().length;

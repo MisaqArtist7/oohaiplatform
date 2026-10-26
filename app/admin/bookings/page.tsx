@@ -1,5 +1,5 @@
 import { Metadata } from "next";
-import AdminBookingsListView from "@/components/admin/bookings/AdminBookingsListView";
+import { AdminBookingsListView } from "@/features/admin";
 
 export const metadata: Metadata = {
   title: "مدیریت کل رزروها | داشبورد مدیریت OOHAI",

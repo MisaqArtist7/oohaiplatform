@@ -1,5 +1,5 @@
 import React from "react";
-import { ToastProvider } from "@/components/ui/Toast";
+import { ToastProvider } from "@/shared/components/Toast";
 
 export default function AuthLayout({
   children,

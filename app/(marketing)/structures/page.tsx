@@ -1,5 +1,5 @@
 import { Metadata } from "next";
-import StructuresExplorer from "@/components/structures/StructuresExplorer";
+import { StructuresExplorer } from "@/features/structures";
 import {
   mockStructures,
   mockStructureTypes,

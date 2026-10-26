@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { adminMediaOwnerRequestsStore } from "@/lib/admin-dashboard-data";
 import { mediaOwnerApplicationsStore } from "@/lib/client-dashboard-data";
-import { AdminMediaOwnerRequest } from "@/types/admin-dashboard";
+import { AdminMediaOwnerRequest } from "@/features/admin";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "https://oohaiplatform.ir/api/v1";
 

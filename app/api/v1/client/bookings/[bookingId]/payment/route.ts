@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { addPaymentToBooking } from "@/lib/client-dashboard-data";
-import { PaymentSubmissionInput } from "@/types/client-dashboard";
+import { PaymentSubmissionInput } from "@/features/bookings";
 
 interface RouteParams {
   params: Promise<{

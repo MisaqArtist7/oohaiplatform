@@ -11,9 +11,9 @@ import {
   Building2,
   Loader2,
 } from "lucide-react";
-import BookingDetailView from "@/components/client/bookings/BookingDetailView";
+import { BookingDetailView } from "@/features/bookings";
 import { initialClientBookings } from "@/lib/client-dashboard-data";
-import LogoutButton from "@/components/common/LogoutButton";
+import { LogoutButton } from "@/shared/components";
 
 interface DashboardBookingDetailPageProps {
   params: Promise<{

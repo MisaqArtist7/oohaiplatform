@@ -1,4 +1,4 @@
-import { Structure, StructureCategory, StructureType } from "@/types/structure";
+import { Structure, StructureCategory, StructureType } from "@/features/structures";
 
 // انتقال‌یافته به shared/lib/digits.ts (re-export موقت برای حفظ سازگاری)
 import { toPersianDigits } from "@/shared/lib/digits";

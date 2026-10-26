@@ -1,5 +1,5 @@
 import { Metadata } from "next";
-import StructureFormView from "@/components/media-owner/structures/StructureFormView";
+import { StructureFormView } from "@/features/media-owner";
 import { structuresStore } from "@/lib/mock-data";
 
 export function generateStaticParams() {

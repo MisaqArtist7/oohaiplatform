@@ -12,11 +12,13 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { mockStructures } from "@/lib/mock-data";
-import StructureGallery from "@/components/structures/detail/StructureGallery";
-import StructureSpecs from "@/components/structures/detail/StructureSpecs";
-import MiniMapLocation from "@/components/structures/detail/MiniMapLocation";
-import BookingSidebar from "@/components/structures/detail/BookingSidebar";
-import StructureCard from "@/components/structures/StructureCard";
+import {
+  StructureGallery,
+  StructureSpecs,
+  MiniMapLocation,
+  StructureCard,
+} from "@/features/structures";
+import { BookingSidebar } from "@/features/bookings";
 
 interface StructureDetailPageProps {
   params: Promise<{

@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { StructureFilters } from "@/types/structure";
+import { StructureFilters } from "../types";
 import {
   fetchStructures,
   fetchStructureById,

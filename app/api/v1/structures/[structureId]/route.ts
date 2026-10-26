@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { structuresStore, updateExistingStructure } from "@/lib/mock-data";
-import { StructureStatus } from "@/types/structure";
+import { StructureStatus } from "@/features/structures";
 
 interface RouteParams {
   params: Promise<{

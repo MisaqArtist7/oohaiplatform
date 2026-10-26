@@ -1,81 +1,61 @@
+// TODO: جایگزینی با GET /api/v1/auth/me پس از آماده شدن بک‌اند
+
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { adminMediaOwnerRequestsStore } from "@/lib/admin-dashboard-data";
-import { mediaOwnerApplicationsStore } from "@/lib/client-dashboard-data";
+
+interface SessionUser {
+  id?: string | number;
+  uuid?: string;
+  name?: string;
+  role?: string;
+  roles?: string[];
+  permissions?: string[];
+}
 
 export async function GET() {
   const store = await cookies();
-  const token = store.get("token")?.value;
-  const userCookie = store.get("user")?.value;
+  const token =
+    store.get("access_token")?.value ||
+    store.get("token")?.value;
 
-  interface SessionUser {
-    id?: string | number;
-    name?: string;
-    phone?: string;
-    nationalCode?: string;
-    roles?: (string | { name?: string; slug?: string })[];
-    permissions?: string[];
+  const userInfoRaw =
+    store.get("user_info")?.value ||
+    store.get("user")?.value;
+
+  // در صورت نبود توکن یا کوکی کاربر، وضعیت ۴۰۱ Unauthorized بازگردانده می‌شود
+  if (!token || !userInfoRaw) {
+    return NextResponse.json(
+      { authenticated: false, message: "نشست کاربر نامعتبر است یا منقضی شده است." },
+      { status: 401 }
+    );
   }
 
   let user: SessionUser | null = null;
-  if (userCookie) {
-    try {
-      user = JSON.parse(userCookie);
-    } catch {
-      user = null;
-    }
+  try {
+    user = JSON.parse(userInfoRaw);
+  } catch {
+    return NextResponse.json(
+      { authenticated: false, message: "اطلاعات نشست نامعتبر است." },
+      { status: 401 }
+    );
   }
 
-  let cookieUpdated = false;
-
-  // بررسی تاییدیه درخواست مالک رسانه برای کاربر جاری در هر دو مخزن
-  if (user) {
-    const currentUser = user;
-    const hasApprovedMoRequest =
-      adminMediaOwnerRequestsStore.some(
-        (req) =>
-          req.status === "approved" &&
-          ((currentUser.phone && req.phone === currentUser.phone) ||
-           (currentUser.nationalCode && req.nationalId === currentUser.nationalCode) ||
-           (currentUser.name && req.contactPerson === currentUser.name))
-      ) ||
-      mediaOwnerApplicationsStore.some(
-        (req) =>
-          req.status === "approved" &&
-          ((currentUser.phone && req.phone === currentUser.phone) ||
-           (currentUser.nationalCode && req.nationalId === currentUser.nationalCode) ||
-           (currentUser.name && req.contactPerson === currentUser.name))
-      );
-
-    if (hasApprovedMoRequest) {
-      const roles = Array.isArray(user.roles) ? user.roles : [];
-      const roleStrings = roles.map((r: unknown) =>
-        typeof r === "string"
-          ? r
-          : (r as { name?: string; slug?: string })?.name || (r as { name?: string; slug?: string })?.slug
-      );
-      if (!roleStrings.includes("media-owner")) {
-        user.roles = [...roles, "media-owner"];
-        cookieUpdated = true;
-      }
-    }
+  if (!user) {
+    return NextResponse.json(
+      { authenticated: false, message: "کاربر یافت نشد." },
+      { status: 401 }
+    );
   }
 
-  const response = NextResponse.json({
-    authenticated: Boolean(token),
-    user,
+  return NextResponse.json({
+    authenticated: true,
+    user: {
+      id: user.id,
+      uuid: user.uuid,
+      name: user.name,
+      role: user.role,
+      roles: user.roles || (user.role ? [user.role] : []),
+      permissions: user.permissions || [],
+    },
   });
-
-  if (cookieUpdated && user) {
-    response.cookies.set("user", JSON.stringify(user), {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 7,
-    });
-  }
-
-  return response;
 }
-
