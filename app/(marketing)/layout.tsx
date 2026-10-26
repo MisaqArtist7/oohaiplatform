@@ -2,7 +2,11 @@
 import Header from "@/shared/components/layout/Header";
 import Footer from "@/shared/components/layout/Footer";
 
-export default function MarketingLayout({ children }: LayoutProps<"/">) {
+export default function MarketingLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
     return (
         <div className="min-h-screen flex flex-col bg-background text-foreground">
             <Header />

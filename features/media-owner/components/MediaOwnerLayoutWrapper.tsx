@@ -17,12 +17,14 @@ export default function MediaOwnerLayoutWrapper({
   return (
     <div className="min-h-screen bg-slate-50/60 font-sans text-foreground" dir="rtl">
       {/* سایدبار ناوبری */}
-      <MediaOwnerSidebar
-        isCollapsed={isCollapsed}
-        onToggleCollapse={() => setIsCollapsed(!isCollapsed)}
-        mobileOpen={mobileOpen}
-        onCloseMobile={() => setMobileOpen(false)}
-      />
+      <React.Suspense fallback={<div className="w-68 bg-slate-900 min-h-screen hidden lg:block" />}>
+        <MediaOwnerSidebar
+          isCollapsed={isCollapsed}
+          onToggleCollapse={() => setIsCollapsed(!isCollapsed)}
+          mobileOpen={mobileOpen}
+          onCloseMobile={() => setMobileOpen(false)}
+        />
+      </React.Suspense>
 
       {/* ناحیه محتوای اصلی */}
       <div

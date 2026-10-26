@@ -5,7 +5,7 @@ import {
   createBookingRequestApi,
   submitBookingPaymentApi,
 } from "../api/bookings.api";
-import { BookingRequestInput } from "@/features/structures";
+import type { BookingRequestInput } from "@/features/structures/types";
 import { PaymentSubmissionInput } from "../types";
 
 export const bookingQueryKeys = {

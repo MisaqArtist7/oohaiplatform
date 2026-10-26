@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { mockStructures, mockBookingsStore } from "@/lib/mock-data";
+import { mockBookingsStore } from "@/lib/mock-data";
 import { BookingRequestInput, BookingResponse } from "@/features/structures";
 import { clientBookingsStore } from "@/lib/client-dashboard-data";
 import { ClientBooking } from "@/features/bookings";
@@ -173,17 +173,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // بررسی وجود سازه
-    const structure = mockStructures.find(
-      (item) => item.id === structureId || item.code === structureId
-    );
-
-    if (!structure) {
-      return NextResponse.json(
-        { success: false, message: "سازه مورد نظر یافت نشد" },
-        { status: 404 }
-      );
-    }
+    // مشخصات ساختار سازه
+    const structure = {
+      id: structureId,
+      code: `STR-${structureId}`,
+      title: (body as BookingRequestInput & { title?: string }).title || `سازه تبلیغاتی شماره ${structureId}`,
+      location: { address: "تهران، معبر اصلی", district: "منطقه ۱" },
+      dimensions: { label: "۱۲ × ۴ متر" },
+      images: { day: "https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=1200&q=80" },
+      type: { name: "بیلبورد" },
+      category: { name: "بزرگراهی" },
+      specs: { minDurationDays: 15 },
+      pricing: { dailyRate: 5000000 },
+    };
 
     // محاسبه قیمت بر اساس روزها
     const effectiveDays = Math.max(durationDays || 30, structure.specs.minDurationDays || 15);

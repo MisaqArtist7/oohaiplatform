@@ -27,21 +27,19 @@ import {
   Plus,
 } from "lucide-react";
 import LogoutButton from "@/shared/components/LogoutButton";
-import { fetchLocations, LocationCity, fetchProposals, ProposalItem } from "@/features/proposals";
-import { formatToman, toPersianDigits } from "@/lib/mock-data";
+import { fetchProposals, ProposalItem } from "@/features/proposals";
+import { formatToman } from "@/shared/lib/money";
+import { toPersianDigits } from "@/shared/lib/digits";
+import { CityCascader } from "@/features/locations/components/CityCascader";
 
 export default function SmartProposalsPage() {
   const router = useRouter();
 
   // فیلدهای فرم
   const [budget, setBudget] = useState<string>("");
-  const [cityId, setCityId] = useState<number | string>(1);
-  const [isCustomCity, setIsCustomCity] = useState<boolean>(false);
+  const [cityId, setCityId] = useState<number>(1);
+  const [cityName, setCityName] = useState<string>("تهران");
   const [scenario, setScenario] = useState<string>("");
-
-  // دریافت لیست شهرها از API /api/v1/locations با توکن احراز هویت
-  const [cities, setCities] = useState<LocationCity[]>([]);
-  const [loadingCities, setLoadingCities] = useState<boolean>(true);
 
   // تب فعال: فرم ایجاد پیشنهاد جدید یا لیست سازه‌های پیشنهادی
   const [activeTab, setActiveTab] = useState<"form" | "structures">("form");
@@ -93,33 +91,7 @@ export default function SmartProposalsPage() {
     checkRole();
   }, [router]);
 
-  // ۲. بارگذاری لیست شهرها از /api/v1/locations
-  useEffect(() => {
-    let isMounted = true;
-    async function loadCities() {
-      setLoadingCities(true);
-      try {
-        const list = await fetchLocations();
-        if (isMounted && list && list.length > 0) {
-          setCities(list);
-          setCityId((prev) => {
-            const exists = list.some((c) => String(c.id) === String(prev));
-            return exists ? prev : list[0].id;
-          });
-        }
-      } catch (err) {
-        console.warn("Error loading cities from API:", err);
-      } finally {
-        if (isMounted) setLoadingCities(false);
-      }
-    }
-    loadCities();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  // ۳. بارگذاری لیست پروپوزال‌ها و سازه‌های پیشنهادی از طریق GET /api/v1/proposals
+  // ۲. بارگذاری لیست پروپوزال‌ها و سازه‌های پیشنهادی از طریق GET /api/v1/proposals
   const loadProposals = async () => {
     setLoadingProposals(true);
     try {
@@ -201,8 +173,7 @@ export default function SmartProposalsPage() {
     setIsSubmitting(true);
 
     try {
-      const selectedCity = cities.find((c) => String(c.id) === String(numCityId));
-      const cityName = selectedCity?.name || (isCustomCity ? `شهر ${numCityId}` : "تهران");
+      const currentCityName = cityName || "تهران";
 
       // ۱. ارسال با متد POST به /api/v1/proposals با توکن احراز هویت
       const res = await fetch("/api/v1/proposals", {
@@ -214,7 +185,7 @@ export default function SmartProposalsPage() {
         body: JSON.stringify({
           budget: numBudget,
           city_id: numCityId,
-          cityName,
+          cityName: currentCityName,
           scenario: trimmedScenario,
         }),
       });
@@ -255,8 +226,8 @@ export default function SmartProposalsPage() {
 
   const handleReset = () => {
     setBudget("");
-    setCityId(cities.length > 0 ? cities[0].id : 1);
-    setIsCustomCity(false);
+    setCityId(1);
+    setCityName("تهران");
     setScenario("");
     setErrorMessage("");
     setSuccessData(null);
@@ -476,71 +447,27 @@ export default function SmartProposalsPage() {
                   </div>
                 </div>
 
-                {/* فیلد ۲: کد شهر (city_id) بارگذاری شده از /api/v1/locations */}
+                {/* فیلد ۲: استان و شهر هدف با انتخاب آبشاری */}
                 <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <label htmlFor="city_id" className="block text-sm font-semibold text-foreground">
-                      کد و نام شهر هدف (city_id) <span className="text-red-500">*</span>
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => setIsCustomCity(!isCustomCity)}
-                      className="text-xs text-primary hover:underline font-medium cursor-pointer"
-                    >
-                      {isCustomCity ? "انتخاب از لیست شهرها (/api/v1/locations)" : "ورود شناسه دستی"}
-                    </button>
-                  </div>
-
-                  <div className="relative">
-                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3.5 text-muted-foreground">
-                      <MapPin className="h-4 w-4" />
-                    </div>
-
-                    {isCustomCity ? (
-                      <input
-                        id="city_id"
-                        type="number"
-                        min="1"
-                        step="1"
-                        value={cityId}
-                        onChange={(e) => setCityId(e.target.value)}
-                        placeholder="شناسه عددی شهر (مثال: 1)"
-                        className="w-full rounded-xl border border-border bg-background py-2.5 pr-10 pl-3.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                        required
-                      />
-                    ) : (
-                      <select
-                        id="city_id"
-                        value={cityId}
-                        disabled={loadingCities}
-                        onChange={(e) => setCityId(Number(e.target.value))}
-                        className="w-full rounded-xl border border-border bg-background py-2.5 pr-10 pl-3.5 text-sm text-foreground transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-60 cursor-pointer"
-                        required
-                      >
-                        {loadingCities ? (
-                          <option value="">در حال دریافت لیست شهرها از سرور...</option>
-                        ) : cities.length === 0 ? (
-                          <option value="">هیچ شهری یافت نشد</option>
-                        ) : (
-                          cities.map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.name} {c.province ? `(استان ${c.province})` : ""} - کد: {c.id}
-                            </option>
-                          ))
-                        )}
-                      </select>
-                    )}
-                  </div>
-                  <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                  <label className="block text-sm font-semibold text-foreground">
+                    استان و شهر هدف کمپین <span className="text-red-500">*</span>
+                  </label>
+                  <CityCascader
+                    selectedCityId={typeof cityId === "number" ? cityId : null}
+                    onCitySelect={(city, prov) => {
+                      if (city) {
+                        setCityId(city.id);
+                        setCityName(city.name);
+                      } else if (prov) {
+                        setCityId(prov.id);
+                        setCityName(prov.name);
+                      }
+                    }}
+                  />
+                  <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1">
                     <span>
-                      شناسه شهر به صورت عدد صحیح ارسال می‌شود. (کد جاری: {cityId})
+                      شهر انتخابی: <strong className="text-foreground">{cityName}</strong> (شناسه: {cityId})
                     </span>
-                    {loadingCities && (
-                      <span className="inline-flex items-center gap-1 text-primary">
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                        <span>در حال دریافت شهرها...</span>
-                      </span>
-                    )}
                   </div>
                 </div>
 

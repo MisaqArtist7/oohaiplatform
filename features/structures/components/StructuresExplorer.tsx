@@ -1,249 +1,273 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState } from "react";
 import {
-  Structure,
-  StructureCategory,
-  StructureType,
-  StructureFilters,
-} from "../types";
-import StructureCard from "./StructureCard";
-import InteractiveMap from "./InteractiveMap";
-import StructureFiltersBar from "./StructureFilters";
-import {
-  fetchStructures,
-  fetchStructureTypes,
-  fetchStructureCategories,
-} from "../api/structures.api";
-import {
-  Map,
-  List,
+  Map as MapIcon,
+  List as ListIcon,
   Inbox,
   RotateCcw,
-  Sparkles,
+  AlertCircle,
+  Loader2,
+  ChevronRight,
+  ChevronLeft,
 } from "lucide-react";
-import { toPersianDigits } from "@/lib/mock-data";
+import StructureCard from "./StructureCard";
+import InteractiveMap from "./InteractiveMap";
+import StructureFilters from "./StructureFilters";
+import {
+  useStructures,
+  useStructureTypes,
+  useStructureCategories,
+} from "../hooks/useStructures";
+import { toPersianDigits } from "@/shared/lib/digits";
 
-interface StructuresExplorerProps {
-  initialStructures?: Structure[];
-  initialTypes?: StructureType[];
-  initialCategories?: StructureCategory[];
-}
-
-export default function StructuresExplorer({
-  initialStructures = [],
-  initialTypes = [],
-  initialCategories = [],
-}: StructuresExplorerProps) {
-  const [structures, setStructures] = useState<Structure[]>(initialStructures);
-  const [types, setTypes] = useState<StructureType[]>(initialTypes);
-  const [categories, setCategories] = useState<StructureCategory[]>(initialCategories);
-  const [loading, setLoading] = useState(initialStructures.length === 0);
-
-  const [filters, setFilters] = useState<StructureFilters>({
-    search: "",
-    typeId: "all",
-    categoryId: "all",
-    status: "all",
-    sortBy: "recommended",
-  });
+export default function StructuresExplorer() {
+  const [page, setPage] = useState(1);
+  const perPage = 15;
+  const [selectedTypeId, setSelectedTypeId] = useState<number | null>(null);
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState<number[]>([]);
 
   const [selectedStructureId, setSelectedStructureId] = useState<string | null>(null);
   const [hoveredStructureId, setHoveredStructureId] = useState<string | null>(null);
   const [mobileTab, setMobileTab] = useState<"list" | "map">("list");
 
-  // بارگذاری داده‌ها از API با فیلترها
-  const loadData = useCallback(async (currentFilters: StructureFilters) => {
-    setLoading(true);
-    try {
-      const res = await fetchStructures(currentFilters);
-      setStructures(res.structures);
-    } catch (err) {
-      console.error("Error loading structures:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // دریافت انواع و دسته‌بندی‌ها از API
+  const { data: types = [] } = useStructureTypes();
+  const { data: categories = [] } = useStructureCategories();
 
-  // بارگذاری اولیه تایپ‌ها و دسته‌بندی‌ها در صورت عدم پاس از سرور
-  useEffect(() => {
-    if (types.length === 0 || categories.length === 0) {
-      Promise.all([fetchStructureTypes(), fetchStructureCategories()])
-        .then(([t, c]) => {
-          setTypes(t);
-          setCategories(c);
-        })
-        .catch((e) => console.error("Initial types/categories error:", e));
-    }
-  }, [types.length, categories.length]);
+  // دریافت سازه‌ها از API واقعی بر اساس پارامترهای مجاز
+  const {
+    data: pageData,
+    isLoading,
+    isError,
+    error,
+    refetch,
+    isFetching,
+  } = useStructures({
+    page,
+    per_page: perPage,
+    structure_type_id: selectedTypeId ?? undefined,
+    category_ids: selectedCategoryIds.length > 0 ? selectedCategoryIds : undefined,
+  });
 
-  // اعمال فیلترها با تاخیر برای جستجو
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      loadData(filters);
-    }, 250);
-    return () => clearTimeout(timer);
-  }, [filters, loadData]);
+  const structures = pageData?.items ?? [];
+  const total = pageData?.total ?? 0;
+  const lastPage = pageData?.lastPage ?? 1;
 
-  // تغییر فیلتر
-  const handleFilterChange = (newFilters: Partial<StructureFilters>) => {
-    setFilters((prev) => ({ ...prev, ...newFilters }));
+  const handleTypeChange = (typeId: number | null) => {
+    setSelectedTypeId(typeId);
+    setPage(1);
   };
 
-  // بازنشانی فیلترها
+  const handleCategoryToggle = (catId: number) => {
+    setSelectedCategoryIds((prev) =>
+      prev.includes(catId) ? prev.filter((id) => id !== catId) : [...prev, catId]
+    );
+    setPage(1);
+  };
+
   const handleResetFilters = () => {
-    const defaultFilters: StructureFilters = {
-      search: "",
-      typeId: "all",
-      categoryId: "all",
-      status: "all",
-      sortBy: "recommended",
-    };
-    setFilters(defaultFilters);
-  };
-
-  // انتخاب سازه روی نقشه یا لیست و اسکرول نرم
-  const handleSelectStructure = (id: string) => {
-    setSelectedStructureId(id);
-
-    // اگر در نمای موبایل هستیم و کاربر روی پین نقشه کلیک کرد، نقشه پاپ‌آپ دارد
-    // اما در دسکتاپ، اسکرول نرم به سمت کارد در ستون راست
-    const cardEl = document.getElementById(`structure-card-${id}`);
-    if (cardEl) {
-      cardEl.scrollIntoView({ behavior: "smooth", block: "center" });
-    }
+    setSelectedTypeId(null);
+    setSelectedCategoryIds([]);
+    setPage(1);
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
-      {/* نوار بالایی فیلتر و جستجو */}
-      <StructureFiltersBar
+    <div className="flex flex-col min-h-[calc(100vh-4rem)] bg-slate-50">
+      {/* نوار فیلترهای استاندارد متصل به API */}
+      <StructureFilters
         types={types}
         categories={categories}
-        filters={filters}
-        totalResults={structures.length}
-        onFilterChange={handleFilterChange}
-        onResetFilters={handleResetFilters}
+        selectedTypeId={selectedTypeId}
+        selectedCategoryIds={selectedCategoryIds}
+        totalResults={total}
+        onTypeChange={handleTypeChange}
+        onCategoryToggle={handleCategoryToggle}
+        onReset={handleResetFilters}
       />
 
-      {/* بخش اصلی: چیدمان دو ستونه اسپلیت اسکرین (Airbnb Style) */}
-      <div className="flex-1 max-w-[1700px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          
-          {/* ستون راست (در RTL یعنی اولین بخش): فهرست کاردها (Grid List) */}
-          <div
-            className={`lg:col-span-7 xl:col-span-7 space-y-4 ${
-              mobileTab === "map" ? "hidden lg:block" : "block"
+      {/* سوییچر تب برای موبایل (لیست / نقشه) */}
+      <div className="lg:hidden border-b border-border bg-white p-2">
+        <div className="flex rounded-xl bg-slate-100 p-1 text-xs font-bold">
+          <button
+            type="button"
+            onClick={() => setMobileTab("list")}
+            className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 transition-all ${
+              mobileTab === "list"
+                ? "bg-white text-foreground shadow-xs"
+                : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            {/* نوار سربرگ نتایج */}
-            <div className="flex items-center justify-between px-1 py-0.5 text-xs text-muted-foreground">
-              <div className="flex items-center gap-1.5 font-bold text-foreground">
-                <Sparkles className="h-4 w-4 text-primary" />
-                <span>نتایج جستجو:</span>
-                <span className="text-primary font-black">
-                  {toPersianDigits(structures.length)} سازه آماده بررسی
-                </span>
-              </div>
-              <div className="hidden sm:block text-[11px]">
-                روی پین‌های نقشه یا کارت‌ها کلیک کنید تا متصل شوند
-              </div>
-            </div>
-
-            {/* حالت بارگذاری اسکلتون */}
-            {loading ? (
-              <div className="space-y-4">
-                {[1, 2, 3, 4].map((i) => (
-                  <div
-                    key={i}
-                    className="h-56 rounded-2xl border border-border bg-white p-4 shadow-2xs flex flex-col sm:flex-row gap-4 animate-pulse"
-                  >
-                    <div className="h-48 sm:h-auto sm:w-56 bg-slate-200 rounded-xl" />
-                    <div className="flex-1 space-y-3 py-2">
-                      <div className="h-4 w-28 bg-slate-200 rounded" />
-                      <div className="h-6 w-3/4 bg-slate-200 rounded" />
-                      <div className="h-4 w-1/2 bg-slate-200 rounded" />
-                      <div className="h-10 w-full bg-slate-100 rounded-xl mt-6" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : structures.length === 0 ? (
-              /* حالت عدم وجود نتیجه با فیلترهای انتخابی */
-              <div className="rounded-2xl border border-dashed border-border bg-white p-12 text-center space-y-4">
-                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-muted-foreground">
-                  <Inbox className="h-7 w-7" />
-                </div>
-                <div className="space-y-1">
-                  <h3 className="text-base font-bold text-foreground">
-                    هیچ سازه‌ای با این مشخصات یافت نشد
-                  </h3>
-                  <p className="text-xs text-muted-foreground max-w-md mx-auto">
-                    می‌توانید کلمه جستجو شده را کوتاه‌تر کنید، فیلتر نوع سازه را روی «همه» بگذارید یا فیلترها را ریست نمایید.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleResetFilters}
-                  className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-xs font-bold text-primary-foreground shadow-xs hover:bg-primary/90 transition-all"
-                >
-                  <RotateCcw className="h-3.5 w-3.5" />
-                  <span>پاک کردن تمام فیلترها</span>
-                </button>
-              </div>
-            ) : (
-              /* رندر لیست کاردها */
-              <div className="space-y-4">
-                {structures.map((item) => (
-                  <StructureCard
-                    key={item.id}
-                    structure={item}
-                    isSelected={selectedStructureId === item.id}
-                    isHovered={hoveredStructureId === item.id}
-                    onHover={setHoveredStructureId}
-                    onSelect={handleSelectStructure}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* ستون چپ (در RTL یعنی بخش سمت چپ): نقشه تعاملی استیکی (Interactive Map) */}
-          <div
-            className={`lg:col-span-5 xl:col-span-5 lg:sticky lg:top-36 ${
-              mobileTab === "list" ? "hidden lg:block" : "block"
+            <ListIcon className="h-4 w-4" />
+            <span>فهرست سازه‌ها ({toPersianDigits(structures.length)})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobileTab("map")}
+            className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 transition-all ${
+              mobileTab === "map"
+                ? "bg-white text-foreground shadow-xs"
+                : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            <InteractiveMap
-              structures={structures}
-              selectedId={selectedStructureId}
-              hoveredId={hoveredStructureId}
-              onSelectStructure={handleSelectStructure}
-            />
-          </div>
-
+            <MapIcon className="h-4 w-4" />
+            <span>نقشه تعاملی</span>
+          </button>
         </div>
       </div>
 
-      {/* دکمه شناور جابجایی نقشه / لیست برای حالت موبایل (Airbnb Mobile Style) */}
-      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 lg:hidden">
-        <button
-          type="button"
-          onClick={() => setMobileTab((t) => (t === "list" ? "map" : "list"))}
-          className="flex items-center gap-2 rounded-full bg-slate-900 px-5 py-3 text-sm font-bold text-white shadow-2xl transition-transform active:scale-95 border border-slate-700"
+      {/* بخش اصلی: ستون لیست و ستون نقشه */}
+      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+        {/* ستون راست (در حالت RTL): لیست سازه‌ها */}
+        <section
+          aria-label="فهرست سازه‌های تبلیغاتی"
+          className={`w-full lg:w-[52%] xl:w-[48%] overflow-y-auto p-4 sm:p-6 lg:p-8 space-y-4 ${
+            mobileTab === "map" ? "hidden lg:block" : "block"
+          }`}
         >
-          {mobileTab === "list" ? (
-            <>
-              <Map className="h-4 w-4 text-primary" />
-              <span>مشاهده روی نقشه ({toPersianDigits(structures.length)})</span>
-            </>
-          ) : (
-            <>
-              <List className="h-4 w-4 text-primary" />
-              <span>مشاهده فهرست ({toPersianDigits(structures.length)})</span>
-            </>
+          {/* هدر وضعیت بارگذاری و نتایج */}
+          <div className="flex items-center justify-between text-xs text-muted-foreground pb-2 border-b border-border/60">
+            <span>
+              نمایش {toPersianDigits(structures.length)} از مجموع {toPersianDigits(total)} سازه
+            </span>
+            {isFetching && (
+              <span className="flex items-center gap-1.5 text-primary font-bold">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <span>در حال به‌روزرسانی...</span>
+              </span>
+            )}
+          </div>
+
+          {/* حالت خطای دریافت از سرور */}
+          {isError && (
+            <div
+              role="alert"
+              className="rounded-2xl border border-rose-200 bg-rose-50 p-8 text-center space-y-3"
+            >
+              <AlertCircle className="mx-auto h-8 w-8 text-rose-600" />
+              <h3 className="text-base font-bold text-rose-950">
+                خطا در برقراری ارتباط با سرور سازه‌ها
+              </h3>
+              <p className="text-xs text-rose-800 max-w-md mx-auto">
+                {error instanceof Error ? error.message : "امکان بارگذاری اطلاعات سازه‌ها وجود ندارد."}
+              </p>
+              <button
+                type="button"
+                onClick={() => refetch()}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-rose-700 transition-colors"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                <span>تلاش مجدد</span>
+              </button>
+            </div>
           )}
-        </button>
+
+          {/* اسکلتون لودینگ */}
+          {isLoading && (
+            <div className="space-y-4">
+              {[1, 2, 3, 4].map((i) => (
+                <div
+                  key={i}
+                  className="h-44 rounded-2xl border border-border bg-white p-4 animate-pulse flex flex-col sm:flex-row gap-4"
+                >
+                  <div className="h-36 w-full sm:w-56 rounded-xl bg-slate-200 shrink-0" />
+                  <div className="flex-1 space-y-3 py-1">
+                    <div className="h-5 w-3/4 bg-slate-200 rounded" />
+                    <div className="h-4 w-1/2 bg-slate-200 rounded" />
+                    <div className="h-4 w-1/3 bg-slate-200 rounded mt-4" />
+                    <div className="h-8 w-2/5 bg-slate-200 rounded mt-4" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* حالت خالی بدون نتیجه */}
+          {!isLoading && !isError && structures.length === 0 && (
+            <div className="rounded-2xl border border-dashed border-border bg-white p-12 text-center space-y-4">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-muted-foreground">
+                <Inbox className="h-7 w-7" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-base font-bold text-foreground">
+                  هیچ سازه‌ای با این مشخصات یافت نشد
+                </h3>
+                <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                  فیلترهای انتخابی نوع یا دسته‌بندی را تغییر دهید تا نتایج دیگر نمایش داده شوند.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleResetFilters}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-slate-50 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                <span>پاک‌کردن فیلترها</span>
+              </button>
+            </div>
+          )}
+
+          {/* لیست کارت‌ها */}
+          {!isLoading && !isError && structures.length > 0 && (
+            <div className="space-y-4">
+              {structures.map((structure) => (
+                <StructureCard
+                  key={structure.id}
+                  structure={structure}
+                  isSelected={String(selectedStructureId) === String(structure.id)}
+                  isHovered={String(hoveredStructureId) === String(structure.id)}
+                  onHover={(id) => setHoveredStructureId(id)}
+                  onSelect={(id) => setSelectedStructureId(id)}
+                />
+              ))}
+
+              {/* کنترل صفحه‌بندی (Pagination) */}
+              {lastPage > 1 && (
+                <div className="flex items-center justify-between pt-4 border-t border-border/80 text-xs">
+                  <button
+                    type="button"
+                    disabled={page <= 1 || isLoading}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    className="inline-flex items-center gap-1 rounded-xl border border-border bg-white px-3.5 py-2 font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40 transition-colors"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                    <span>صفحه قبل</span>
+                  </button>
+
+                  <span className="font-bold text-slate-600">
+                    صفحه {toPersianDigits(page)} از {toPersianDigits(lastPage)}
+                  </span>
+
+                  <button
+                    type="button"
+                    disabled={page >= lastPage || isLoading}
+                    onClick={() => setPage((p) => Math.min(lastPage, p + 1))}
+                    className="inline-flex items-center gap-1 rounded-xl border border-border bg-white px-3.5 py-2 font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40 transition-colors"
+                  >
+                    <span>صفحه بعد</span>
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+
+        {/* ستون چپ: نقشه تعاملی */}
+        <section
+          aria-label="نقشه تعاملی بیلبوردها"
+          className={`flex-1 h-[60vh] lg:h-auto sticky top-32 ${
+            mobileTab === "list" ? "hidden lg:block" : "block"
+          }`}
+        >
+          <InteractiveMap
+            structures={structures}
+            selectedId={selectedStructureId}
+            hoveredId={hoveredStructureId}
+            onSelectStructure={(id) => setSelectedStructureId(id)}
+            className="h-full w-full"
+          />
+        </section>
       </div>
     </div>
   );

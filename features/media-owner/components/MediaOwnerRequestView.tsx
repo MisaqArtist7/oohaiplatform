@@ -19,7 +19,8 @@ import {
   CalendarCheck,
 } from "lucide-react";
 import { submitMediaOwnerApplication } from "../api/media-owner.api";
-import { toPersianDigits } from "@/lib/mock-data";
+import { toPersianDigits } from "@/shared/lib/digits";
+import { useCities } from "@/features/locations/hooks/useCities";
 import {
   mediaOwnerRequestSchema,
   MediaOwnerRequestFormValues,
@@ -33,6 +34,7 @@ function generateFallbackTrackingCode(): string {
 }
 
 export default function MediaOwnerRequestView() {
+  const { provinces, isLoading: isProvincesLoading } = useCities();
   const [files, setFiles] = useState<File[]>([]);
   const [submissionSuccess, setSubmissionSuccess] = useState<{
     trackingCode: string;
@@ -40,18 +42,6 @@ export default function MediaOwnerRequestView() {
     submittedAt: string;
     companyName: string;
   } | null>(null);
-
-  const provinces = [
-    "تهران",
-    "خراسان رضوی",
-    "اصفهان",
-    "فارس",
-    "آذربایجان شرقی",
-    "البرز",
-    "مازندران",
-    "خوزستان",
-    "سایر استان‌ها",
-  ];
 
   const {
     register,
@@ -314,11 +304,13 @@ export default function MediaOwnerRequestView() {
                   </label>
                   <select
                     {...register("province")}
+                    disabled={isProvincesLoading}
                     className="w-full rounded-xl border border-border bg-slate-50 px-3.5 py-2.5 text-xs text-foreground focus:border-primary focus:bg-white focus:outline-none transition-colors"
                   >
+                    <option value="">{isProvincesLoading ? "در حال دریافت استان‌ها..." : "انتخاب استان"}</option>
                     {provinces.map((p) => (
-                      <option key={p} value={p}>
-                        {p}
+                      <option key={p.id} value={p.name}>
+                        {p.name}
                       </option>
                     ))}
                   </select>

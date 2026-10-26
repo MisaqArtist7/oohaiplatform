@@ -3,20 +3,21 @@
 import React from "react";
 import {
   MapPin,
-  Navigation2,
   ExternalLink,
   Compass,
 } from "lucide-react";
 import { StructureLocation } from "../types";
-import { toPersianDigits } from "@/lib/mock-data";
+import { toPersianDigits } from "@/shared/lib/digits";
 
 interface MiniMapLocationProps {
-  location: StructureLocation;
+  location?: StructureLocation;
   title: string;
 }
 
 export default function MiniMapLocation({ location, title }: MiniMapLocationProps) {
-  const { lat, lng, address, district, trafficFlow } = location;
+  const lat = location?.lat ?? 35.75;
+  const lng = location?.lng ?? 51.41;
+  const address = location?.address || "";
 
   // لینک‌های مسیریابی مستقیم
   const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
@@ -29,19 +30,17 @@ export default function MiniMapLocation({ location, title }: MiniMapLocationProp
       <div className="flex items-center justify-between">
         <h3 className="text-base font-bold text-foreground flex items-center gap-2">
           <MapPin className="h-5 w-5 text-primary" />
-          <span>موقعیت مکانی دقیق روی نقشه</span>
+          <span>موقعیت مکانی روی نقشه</span>
         </h3>
         <span className="text-xs font-mono text-muted-foreground bg-slate-100 px-2.5 py-1 rounded-lg">
           {toPersianDigits(lat.toFixed(4))}° N, {toPersianDigits(lng.toFixed(4))}° E
         </span>
       </div>
 
-      {/* نقشه شماتیک و لوکیشن پین شده با انیمیشن رادار */}
+      {/* نقشه شماتیک و لوکیشن پین شده با انیمیشن */}
       <div className="relative h-60 w-full overflow-hidden rounded-xl border border-slate-200 bg-[#e2eaf2]">
-        {/* پس‌زمینه گرافیکی نقشه با معابر فرضی */}
         <div className="absolute inset-0 opacity-40 bg-[radial-gradient(#64748b_1.2px,transparent_1.2px)] [background-size:20px_20px]" />
-        
-        {/* خطوط معابر اطراف سازه */}
+
         <svg className="w-full h-full absolute inset-0" viewBox="0 0 400 240">
           <path d="M 0 120 Q 200 110, 400 130" stroke="#cbd5e1" strokeWidth="20" fill="none" />
           <path d="M 0 120 Q 200 110, 400 130" stroke="#fbbf24" strokeWidth="8" fill="none" />
@@ -49,14 +48,11 @@ export default function MiniMapLocation({ location, title }: MiniMapLocationProp
           <path d="M 180 0 L 220 240" stroke="#ffffff" strokeWidth="6" fill="none" />
         </svg>
 
-        {/* پین پالس‌زن در مرکز نقشه */}
+        {/* پین در مرکز نقشه */}
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center">
           <div className="relative flex items-center justify-center">
-            {/* حلقه پالس‌زن انیمیشنی */}
             <span className="absolute h-14 w-14 rounded-full bg-primary/25 animate-ping" />
             <span className="absolute h-9 w-9 rounded-full bg-primary/30" />
-            
-            {/* آیکون پین اصلی */}
             <div className="relative z-10 flex h-10 w-10 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-xl ring-4 ring-white">
               <MapPin className="h-5 w-5 fill-current" />
             </div>
@@ -66,32 +62,27 @@ export default function MiniMapLocation({ location, title }: MiniMapLocationProp
             className="mt-1.5 rounded-lg bg-slate-900/90 px-2.5 py-1 text-[11px] font-bold text-white shadow-lg backdrop-blur-md whitespace-nowrap"
             title={title}
           >
-            محل دقیق نصب {title}
+            محل نصب: {title}
           </div>
         </div>
 
-        {/* برچسب قطب‌نما */}
         <div className="absolute top-3 right-3 rounded-lg bg-white/90 backdrop-blur-md px-2.5 py-1 text-[11px] font-bold text-slate-700 shadow-2xs flex items-center gap-1">
           <Compass className="h-3.5 w-3.5 text-primary" />
-          <span>منطقه تحت پوشش</span>
+          <span>موقعیت GPS</span>
         </div>
       </div>
 
-      {/* اطلاعات آدرس و ترافیک */}
-      <div className="space-y-2 text-xs text-slate-700 bg-slate-50 p-3.5 rounded-xl border border-slate-100">
-        <div className="flex items-start gap-2">
+      {/* اطلاعات آدرس */}
+      {address && (
+        <div className="text-xs text-slate-700 bg-slate-50 p-3.5 rounded-xl border border-slate-100 flex items-start gap-2">
           <MapPin className="h-4 w-4 text-primary shrink-0 mt-0.5" />
           <span className="font-semibold text-foreground leading-relaxed">
-            {district} - {address}
+            {address}
           </span>
         </div>
-        <div className="flex items-center gap-2 text-muted-foreground pt-1 border-t border-slate-200/60">
-          <Navigation2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-          <span>جریان ترافیک: {trafficFlow}</span>
-        </div>
-      </div>
+      )}
 
-      {/* دکمه‌های مسیریابی سریع با اپلیکیشن‌ها */}
+      {/* دکمه‌های مسیریابی مستقیم با اپلیکیشن‌ها */}
       <div>
         <div className="text-xs font-bold text-foreground mb-2">
           مسیریابی مستقیم جهت بازدید حضوری از سازه:

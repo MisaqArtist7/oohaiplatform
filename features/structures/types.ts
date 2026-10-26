@@ -1,21 +1,35 @@
-export type StructureStatus = 'available' | 'booked' | 'reserved' | 'pending_review' | 'inactive';
+import { City } from "@/features/locations/types";
 
-export interface StructureType {
-  id: string;
+export type StructureStatus =
+  | "available"
+  | "booked"
+  | "reserved"
+  | "pending_review"
+  | "inactive"
+  | "occupied"
+  | "locked";
+
+export interface StructureTypeItem {
+  id: number;
   name: string;
-  slug: string;
+  is_active?: boolean;
+  slug?: string;
   description?: string;
-  count: number;
+  count?: number;
   iconName?: string;
 }
 
-export interface StructureCategory {
-  id: string;
+export type StructureType = StructureTypeItem;
+
+export interface StructureCategoryItem {
+  id: number;
   name: string;
-  slug: string;
+  slug?: string;
   description?: string;
-  count: number;
+  count?: number;
 }
+
+export type StructureCategory = StructureCategoryItem;
 
 export interface StructureDimensions {
   width: number;
@@ -26,76 +40,109 @@ export interface StructureDimensions {
 
 export interface StructureLocation {
   city: string;
-  province: string;
-  district: string;
+  province?: string;
+  district?: string;
   address: string;
   lat: number;
   lng: number;
-  viewingAngle: string;
-  trafficFlow: string;
+  viewingAngle?: string;
+  trafficFlow?: string;
 }
 
 export interface StructurePricing {
   basePriceMonthly: number;
-  dailyRate: number;
-  currency: string;
+  dailyRate?: number;
+  currency?: string;
   discountMonthlyPercent?: number;
-  printablePrice: string;
+  printablePrice?: string;
 }
 
 export interface StructureSpecs {
-  lighting: string;
-  orientation: string;
-  visibilityScore: number; // 0 - 100
-  minDurationDays: number;
-  mediaType: string;
-  isTwoSided: boolean;
+  lighting?: string;
+  orientation?: string;
+  visibilityScore?: number;
+  minDurationDays?: number;
+  mediaType?: string;
+  isTwoSided?: boolean;
   rushHourPeak?: string;
 }
 
-export interface StructureImages {
-  day: string;
-  night: string;
+export interface StructureImagesObj {
+  day?: string;
+  night?: string;
   gallery: string[];
 }
 
 export interface StructureOwner {
   name: string;
-  verified: boolean;
-  rating: number;
+  verified?: boolean;
+  rating?: number;
   contactNumber?: string;
 }
 
+/**
+ * مدل سازه در فرانت‌اند منطبق با خروجی API واقعی لاراول
+ */
 export interface Structure {
-  id: string;
-  code: string;
+  id: string | number;
+  uuid?: string;
   title: string;
-  slug: string;
-  type: StructureType;
-  category: StructureCategory;
+  code?: string;
+  slug?: string;
+  city_id?: number;
+  city?: City | { id: number; name: string } | string;
+  structure_type_id?: number;
+  type?: StructureTypeItem;
+  category_ids?: number[];
+  category?: StructureCategoryItem;
+  categories?: StructureCategoryItem[];
   status: StructureStatus;
-  statusLabel: string;
-  dimensions: StructureDimensions;
-  location: StructureLocation;
-  pricing: StructurePricing;
-  specs: StructureSpecs;
-  images: StructureImages;
-  description: string;
-  features: string[];
-  owner: StructureOwner;
+  statusLabel?: string;
+  latitude?: number;
+  longitude?: number;
+  price?: number; // به ریال طبق استاندارد API بک‌اند
+  address?: string;
+  description?: string;
+  audience_type?: string;
+  images?: string[] | StructureImagesObj;
+  created_at?: string;
+  updated_at?: string;
+
+  // فیلدهای کمکی لایه Presentation
+  image?: string;
+  dimensions?: StructureDimensions;
+  location?: StructureLocation;
+  pricing?: StructurePricing;
+  specs?: StructureSpecs;
+  features?: string[];
+  owner?: StructureOwner;
   targetAudience?: string[];
-  createdAt: string;
 }
 
-export interface StructureFilters {
+/**
+ * فیلترهای مجاز ارسالی به اندپوینت GET /structures طبق مشخصات دقیق بک‌اند:
+ * پارامترها فقط: page, per_page, structure_type_id, category_ids[]
+ */
+export interface StructureQueryFilters {
+  page?: number;
+  per_page?: number;
+  structure_type_id?: number | string;
+  category_ids?: (number | string)[];
+}
+
+/**
+ * نام مستعار برای سازگاری با ماژول‌های موجود
+ */
+export type StructureFilters = StructureQueryFilters & {
+  // فیلترهای غیرفعال‌شده که در بک‌اند پشتیبانی نمی‌شوند (ثبت در BACKEND_GAPS.md)
   search?: string;
   typeId?: string;
   categoryId?: string;
-  status?: StructureStatus | 'all';
+  status?: StructureStatus | "all";
   minPrice?: number;
   maxPrice?: number;
-  sortBy?: 'recommended' | 'price_asc' | 'price_desc' | 'visibility' | 'newest';
-}
+  sortBy?: "recommended" | "price_asc" | "price_desc" | "visibility" | "newest";
+};
 
 export interface BookingRequestInput {
   structureId: string;
@@ -126,7 +173,7 @@ export interface BookingResponse {
     brandName: string;
     notes?: string;
     totalPrice: number;
-    status: 'pending_review' | 'confirmed';
+    status: "pending_review" | "confirmed";
     createdAt: string;
   };
 }

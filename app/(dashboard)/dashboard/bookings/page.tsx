@@ -32,7 +32,8 @@ import {
   Building2,
 } from "lucide-react";
 import { ClientBooking, fetchProformaDownloadToken } from "@/features/bookings";
-import { formatToman, toPersianDigits } from "@/lib/mock-data";
+import { formatToman } from "@/shared/lib/money";
+import { toPersianDigits } from "@/shared/lib/digits";
 import { useClientBookingsQuery } from "@/features/bookings/hooks/useBookings";
 import { LogoutButton } from "@/shared/components";
 

@@ -17,7 +17,7 @@ import {
   Compass,
 } from "lucide-react";
 import { Structure } from "../types";
-import { formatShortToman, formatToman } from "@/lib/mock-data";
+import { formatShortToman, formatToman } from "@/shared/lib/money";
 
 interface InteractiveMapProps {
   structures: Structure[];
@@ -204,10 +204,13 @@ export default function InteractiveMap({
 
         {/* پین‌های سازه‌ها روی نقشه (Airbnb Style) */}
         {structures.map((structure) => {
-          const coords = projectCoords(structure.location.lat, structure.location.lng);
-          const isSelected = selectedId === structure.id || activePopupId === structure.id;
-          const isHovered = hoveredId === structure.id;
+          const lat = structure.latitude ?? structure.location?.lat ?? 35.75;
+          const lng = structure.longitude ?? structure.location?.lng ?? 51.41;
+          const coords = projectCoords(lat, lng);
+          const isSelected = String(selectedId) === String(structure.id) || String(activePopupId) === String(structure.id);
+          const isHovered = String(hoveredId) === String(structure.id);
           const isAvailable = structure.status === "available";
+          const priceRial = structure.price ?? structure.pricing?.basePriceMonthly ?? 0;
 
           return (
             <div
@@ -225,8 +228,8 @@ export default function InteractiveMap({
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onSelectStructure(structure.id);
-                  setActivePopupId(structure.id);
+                  onSelectStructure(String(structure.id));
+                  setActivePopupId(String(structure.id));
                 }}
                 className={`map-pin-btn group flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-black shadow-md transition-all duration-200 cursor-pointer ${
                   isSelected
@@ -240,7 +243,7 @@ export default function InteractiveMap({
               >
                 <span className="flex h-2 w-2 rounded-full bg-primary shrink-0" />
                 <span className="whitespace-nowrap font-sans">
-                  {formatShortToman(structure.pricing.basePriceMonthly)}
+                  {formatShortToman(priceRial)}
                 </span>
               </button>
 
@@ -269,14 +272,22 @@ export default function InteractiveMap({
             {/* تصویر بندانگشتی */}
             <div className="relative h-20 w-24 shrink-0 rounded-xl overflow-hidden bg-muted">
               <Image
-                src={activeStructure.images.day}
+                src={
+                  activeStructure.image ||
+                  (Array.isArray(activeStructure.images)
+                    ? activeStructure.images[0]
+                    : activeStructure.images?.day) ||
+                  "https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=1200&q=80"
+                }
                 alt={activeStructure.title}
                 fill
                 sizes="96px"
                 className="object-cover"
               />
               <span className="absolute bottom-1 right-1 rounded bg-black/70 px-1 py-0.5 text-[9px] font-bold text-white">
-                {activeStructure.type.name}
+                {typeof activeStructure.type === "object" && activeStructure.type?.name
+                  ? activeStructure.type.name
+                  : "سازه"}
               </span>
             </div>
 
@@ -285,7 +296,7 @@ export default function InteractiveMap({
               <div>
                 <div className="flex items-center justify-between gap-1">
                   <span className="text-[10px] font-mono text-muted-foreground bg-slate-100 px-1.5 py-0.5 rounded">
-                    {activeStructure.code}
+                    {activeStructure.code || String(activeStructure.id)}
                   </span>
                   <button
                     type="button"
@@ -302,13 +313,18 @@ export default function InteractiveMap({
 
                 <div className="flex items-center gap-1 text-[11px] text-muted-foreground truncate mt-0.5">
                   <MapPin className="h-3 w-3 shrink-0 text-primary" />
-                  <span className="truncate">{activeStructure.location.district}</span>
+                  <span className="truncate">
+                    {activeStructure.address ||
+                      activeStructure.location?.address ||
+                      activeStructure.location?.district ||
+                      ""}
+                  </span>
                 </div>
               </div>
 
               <div className="flex items-center justify-between pt-2 border-t border-slate-100 mt-1">
                 <span className="text-xs font-black text-foreground">
-                  {formatToman(activeStructure.pricing.basePriceMonthly)}
+                  {formatToman(activeStructure.price ?? activeStructure.pricing?.basePriceMonthly ?? 0)}
                 </span>
                 <Link
                   href={`/structures/${activeStructure.id}`}

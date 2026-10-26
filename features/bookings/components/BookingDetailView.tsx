@@ -24,7 +24,8 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { fetchProformaDownloadToken } from "../api/bookings.api";
-import { formatToman, toPersianDigits } from "@/lib/mock-data";
+import { formatToman } from "@/shared/lib/money";
+import { toPersianDigits } from "@/shared/lib/digits";
 import {
   useClientBookingDetailQuery,
   useSubmitPaymentMutation,

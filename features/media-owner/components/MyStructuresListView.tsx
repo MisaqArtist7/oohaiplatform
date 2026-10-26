@@ -1,12 +1,12 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { useQuery } from "@tanstack/react-query";
 import {
   Layers,
   PlusCircle,
-  Search,
   Edit3,
   Eye,
   Clock,
@@ -16,69 +16,59 @@ import {
   List,
   Loader2,
   ExternalLink,
+  ChevronRight,
+  ChevronLeft,
+  AlertCircle,
+  ShieldAlert,
+  RefreshCw,
 } from "lucide-react";
-import { Structure } from "@/features/structures";
-import { fetchMyStructures } from "../api/media-owner.api";
-import { formatToman, toPersianDigits, getMyStructuresList } from "@/lib/mock-data";
+import type { Structure } from "@/features/structures/types";
+import { useMyStructures } from "@/features/structures/hooks/useStructures";
+import { formatToman } from "@/shared/lib/money";
+import { toPersianDigits } from "@/shared/lib/digits";
 
 export default function MyStructuresListView() {
-  const [structures, setStructures] = useState<Structure[]>(getMyStructuresList());
-  const [loading, setLoading] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [typeFilter, setTypeFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [page, setPage] = useState(1);
+  const perPage = 12;
   const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
 
-  useEffect(() => {
-    let ignore = false;
-    async function init() {
-      try {
-        setLoading(true);
-        const data = await fetchMyStructures();
-        if (!ignore && data.length > 0) {
-          setStructures(data);
-        }
-      } catch (err) {
-        console.error("Failed to load my structures:", err);
-      } finally {
-        if (!ignore) setLoading(false);
-      }
-    }
-    init();
-    return () => {
-      ignore = true;
-    };
-  }, []);
-
-  // فیلتر کردن سازه‌ها
-  const filteredStructures = structures.filter((item) => {
-    const matchSearch =
-      !searchQuery ||
-      item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.location.address.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.location.district.toLowerCase().includes(searchQuery.toLowerCase());
-
-    const matchType =
-      typeFilter === "all" ||
-      item.type.id === typeFilter ||
-      item.type.slug === typeFilter;
-
-    const matchStatus =
-      statusFilter === "all" || item.status === statusFilter;
-
-    return matchSearch && matchType && matchStatus;
+  // دریافت اطلاعات جلسه کاربر جهت گارد مجوز structure.view-own
+  const { data: sessionData, isLoading: isSessionLoading } = useQuery({
+    queryKey: ["auth", "session"],
+    queryFn: async () => {
+      const res = await fetch("/api/auth/session");
+      if (!res.ok) return { authenticated: false, user: null };
+      return res.json();
+    },
+    staleTime: 5 * 60 * 1000,
   });
 
-  // محاسبه آمارها
-  const totalCount = structures.length;
-  const availableCount = structures.filter((s) => s.status === "available").length;
-  const bookedCount = structures.filter((s) => s.status === "booked").length;
-  const pendingCount = structures.filter(
-    (s) => s.status === "pending_review" || s.status === "reserved"
-  ).length;
+  const user = sessionData?.user;
+  const permissions: string[] = user?.permissions || [];
+  const roles: string[] = (user?.roles || []).map((r: string | { name?: string }) =>
+    typeof r === "string" ? r.toLowerCase() : (r?.name || "").toLowerCase()
+  );
 
-  const getStatusBadge = (status: Structure["status"], label: string) => {
+  const hasPermission =
+    permissions.includes("structure.view-own") ||
+    permissions.some((p) =>
+      ["superadmin", "super-admin", "media-owner", "media_owner", "structures.manage"].includes(
+        p.toLowerCase()
+      )
+    ) ||
+    roles.some((r) =>
+      ["superadmin", "super-admin", "media-owner", "media_owner", "admin"].includes(r)
+    );
+
+  const {
+    data: pageData,
+    isLoading: isStructuresLoading,
+    isError,
+    error,
+    refetch,
+  } = useMyStructures(page, perPage);
+
+  const getStatusBadge = (status: Structure["status"], label?: string) => {
     switch (status) {
       case "available":
         return (
@@ -88,33 +78,53 @@ export default function MyStructuresListView() {
           </span>
         );
       case "booked":
+      case "reserved":
         return (
           <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 border border-indigo-200 px-2.5 py-0.5 text-[11px] font-bold text-indigo-700">
             <CalendarCheck className="h-3 w-3" />
-            <span>{label || "در حال اکران / رزرو"}</span>
+            <span>{label || "رزرو شده"}</span>
           </span>
         );
-      case "pending_review":
+      case "locked":
         return (
           <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-200 px-2.5 py-0.5 text-[11px] font-bold text-amber-800">
             <Clock className="h-3 w-3" />
-            <span>{label || "در انتظار تایید"}</span>
-          </span>
-        );
-      case "reserved":
-        return (
-          <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 border border-blue-200 px-2.5 py-0.5 text-[11px] font-bold text-blue-700">
-            <span>{label || "قفل موقت مشتری"}</span>
+            <span>{label || "قفل موقت ۴۸ ساعته"}</span>
           </span>
         );
       default:
         return (
           <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 text-slate-700 px-2.5 py-0.5 text-[11px] font-bold">
-            <span>{label || status}</span>
+            <span>{label || status || "نامشخص"}</span>
           </span>
         );
     }
   };
+
+  // گارد مجوز
+  if (!isSessionLoading && sessionData?.authenticated && !hasPermission) {
+    return (
+      <div className="rounded-2xl border border-rose-200 bg-rose-50/70 p-8 text-center text-rose-800 max-w-lg mx-auto my-12">
+        <ShieldAlert className="mx-auto h-12 w-12 text-rose-500 mb-3" />
+        <h3 className="text-base font-black mb-1">عدم دسترسی به سازه‌های مالک رسانه</h3>
+        <p className="text-xs text-rose-600 mb-4 leading-relaxed">
+          حساب کاربری شما دارای مجوز لازم (<code className="font-mono font-bold">structure.view-own</code>)
+          برای مشاهده سازه‌های تحت مالکیت نیست. لطفاً با پشتیبانی یا مدیر سیستم تماس حاصل فرمایید.
+        </p>
+        <Link
+          href="/dashboard"
+          className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700 transition-colors"
+        >
+          بازگشت به داشبورد
+        </Link>
+      </div>
+    );
+  }
+
+  const structures = pageData?.items || [];
+  const totalCount = pageData?.total ?? structures.length;
+  const currentPage = pageData?.page ?? page;
+  const lastPage = pageData?.lastPage ?? (pageData?.total ? Math.ceil(pageData.total / perPage) : 1);
 
   return (
     <div className="space-y-6">
@@ -126,7 +136,7 @@ export default function MyStructuresListView() {
             <span>مدیریت سازه‌های من (My Structures)</span>
           </h2>
           <p className="text-xs text-muted-foreground mt-1">
-            مشاهده، ویرایش وضعیت، تنظیم قیمت‌های پایه و ثبت سازه‌های تبلیغاتی جدید تحت مالکیت شما
+            مشاهده، بررسی وضعیت و ثبت سازه‌های تبلیغاتی جدید تحت مالکیت شما
           </p>
         </div>
 
@@ -139,330 +149,325 @@ export default function MyStructuresListView() {
         </Link>
       </div>
 
-      {/* کارت‌های خلاصه وضعیت و شاخص‌های آماری (KPIs) */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <div className="rounded-2xl border border-border bg-white p-4 shadow-2xs space-y-1">
-          <div className="text-xs text-muted-foreground font-bold">کل سازه‌ها</div>
-          <div className="text-xl sm:text-2xl font-black text-foreground font-sans">
-            {toPersianDigits(totalCount)} <span className="text-xs font-normal text-muted-foreground">سازه</span>
-          </div>
-          <div className="text-[11px] text-slate-500">تحت مدیریت کانون آوای رسانه</div>
+      {/* خلاصه تعداد و تغییر نحوه نمایش */}
+      <div className="rounded-2xl border border-border bg-white p-4 shadow-2xs flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
+          <span>تعداد کل سازه‌های شما:</span>
+          <span className="font-sans text-sm text-amber-600">
+            {toPersianDigits(totalCount)}
+          </span>
+          <span className="text-muted-foreground font-normal">سازه</span>
         </div>
 
-        <div className="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4 shadow-2xs space-y-1">
-          <div className="text-xs text-emerald-800 font-bold">فعال و آماده اکران</div>
-          <div className="text-xl sm:text-2xl font-black text-emerald-700 font-sans">
-            {toPersianDigits(availableCount)} <span className="text-xs font-normal text-emerald-600">سازه</span>
-          </div>
-          <div className="text-[11px] text-emerald-700">قابل رزرو مستقیم در پلتفرم</div>
-        </div>
-
-        <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4 shadow-2xs space-y-1">
-          <div className="text-xs text-indigo-800 font-bold">در حال اکران (رزرو شده)</div>
-          <div className="text-xl sm:text-2xl font-black text-indigo-700 font-sans">
-            {toPersianDigits(bookedCount)} <span className="text-xs font-normal text-indigo-600">سازه</span>
-          </div>
-          <div className="text-[11px] text-indigo-700">دارای قرارداد رسمی معتبر</div>
-        </div>
-
-        <div className="rounded-2xl border border-amber-100 bg-amber-50/50 p-4 shadow-2xs space-y-1">
-          <div className="text-xs text-amber-800 font-bold">در انتظار بازبینی / قفل</div>
-          <div className="text-xl sm:text-2xl font-black text-amber-700 font-sans">
-            {toPersianDigits(pendingCount)} <span className="text-xs font-normal text-amber-600">سازه</span>
-          </div>
-          <div className="text-[11px] text-amber-700">استعلام مدارک یا پیش‌فاکتور</div>
+        {/* سوئیچ گرید / جدول */}
+        <div className="flex items-center rounded-xl border border-border bg-slate-50 p-1">
+          <button
+            type="button"
+            onClick={() => setViewMode("grid")}
+            className={`p-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
+              viewMode === "grid"
+                ? "bg-white text-foreground shadow-2xs font-bold"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+            title="نمایش کارتی"
+          >
+            <LayoutGrid className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode("table")}
+            className={`p-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
+              viewMode === "table"
+                ? "bg-white text-foreground shadow-2xs font-bold"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+            title="نمایش جدولی"
+          >
+            <List className="h-4 w-4" />
+          </button>
         </div>
       </div>
 
-      {/* نوار جستجو، فیلترها و تغییر حالت نمایش */}
-      <div className="rounded-2xl border border-border bg-white p-4 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-3">
-        {/* اینپوت جستجو */}
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="جستجو در نام سازه، کد، بزرگراه یا منطقه..."
-            className="w-full rounded-xl border border-border bg-slate-50 pr-9.5 pl-3.5 py-2 text-xs text-foreground focus:border-amber-600 focus:bg-white focus:outline-none transition-colors"
-          />
-        </div>
-
-        {/* فیلتر نوع و وضعیت سازه */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* فیلتر نوع */}
-          <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-            className="rounded-xl border border-border bg-slate-50 px-3 py-2 text-xs text-foreground focus:border-amber-600 focus:bg-white focus:outline-none"
-          >
-            <option value="all">همه انواع سازه‌ها</option>
-            <option value="billboard">بیلبورد</option>
-            <option value="bridge">عرشه پل</option>
-            <option value="straboard">استرابورد</option>
-            <option value="urban_tv">تلویزیون شهری</option>
-            <option value="lamppost">لمپوست</option>
-          </select>
-
-          {/* فیلتر وضعیت */}
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="rounded-xl border border-border bg-slate-50 px-3 py-2 text-xs text-foreground focus:border-amber-600 focus:bg-white focus:outline-none"
-          >
-            <option value="all">همه وضعیت‌ها</option>
-            <option value="available">فعال و آماده اکران</option>
-            <option value="booked">در حال اکران (رزرو شده)</option>
-            <option value="pending_review">در انتظار تایید</option>
-          </select>
-
-          {/* سوئیچ گرید / جدول */}
-          <div className="hidden sm:flex items-center rounded-xl border border-border bg-slate-50 p-1">
-            <button
-              type="button"
-              onClick={() => setViewMode("grid")}
-              className={`p-1.5 rounded-lg text-xs transition-colors ${
-                viewMode === "grid"
-                  ? "bg-white text-foreground shadow-2xs font-bold"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-              title="نمایش کارتی"
-            >
-              <LayoutGrid className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode("table")}
-              className={`p-1.5 rounded-lg text-xs transition-colors ${
-                viewMode === "table"
-                  ? "bg-white text-foreground shadow-2xs font-bold"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-              title="نمایش جدولی"
-            >
-              <List className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* نمایش لیست یا گرید سازه‌ها */}
-      {loading ? (
+      {/* نمایش لودینگ */}
+      {isStructuresLoading && (
         <div className="rounded-2xl border border-border bg-white p-12 text-center text-xs text-muted-foreground flex items-center justify-center gap-2">
           <Loader2 className="h-5 w-5 animate-spin text-amber-600" />
-          <span>در حال دریافت اطلاعات سازه‌های تحت مالکیت...</span>
+          <span>در حال دریافت اطلاعات سازه‌های تحت مالکیت از سرور...</span>
         </div>
-      ) : filteredStructures.length === 0 ? (
+      )}
+
+      {/* نمایش خطا بدون موک */}
+      {isError && (
+        <div className="rounded-2xl border border-rose-200 bg-rose-50/70 p-8 text-center text-rose-800">
+          <AlertCircle className="mx-auto h-10 w-10 text-rose-500 mb-3" />
+          <h3 className="font-bold text-sm mb-1">خطا در دریافت لیست سازه‌ها</h3>
+          <p className="text-xs text-rose-600 mb-4 max-w-md mx-auto">
+            {(error as Error)?.message || "ارتباط با سرور برقرار نشد. لطفاً مجدداً تلاش کنید."}
+          </p>
+          <button
+            type="button"
+            onClick={() => refetch()}
+            className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-rose-700 transition-colors cursor-pointer"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            تلاش مجدد
+          </button>
+        </div>
+      )}
+
+      {/* لیست خالی */}
+      {!isStructuresLoading && !isError && structures.length === 0 && (
         <div className="rounded-2xl border border-dashed border-border bg-white p-12 text-center space-y-3">
           <Layers className="h-8 w-8 text-muted-foreground mx-auto" />
-          <h4 className="text-sm font-bold text-foreground">سازه‌ای با این فیلترها یافت نشد</h4>
+          <h4 className="text-sm font-bold text-foreground">هنوز هیچ سازه‌ای ثبت نکرده‌اید</h4>
           <p className="text-xs text-muted-foreground">
-            می‌توانید فیلترها را ریست کنید یا سازه جدیدی در سامانه ثبت نمایید.
+            برای افزودن بیلبورد، استرابورد یا تلویزیون شهری خود به سامانه، روی دکمه زیر کلیک کنید.
           </p>
-          <div className="pt-2 flex justify-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setSearchQuery("");
-                setTypeFilter("all");
-                setStatusFilter("all");
-              }}
-              className="rounded-xl border border-border bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
-            >
-              پاک کردن فیلترها
-            </button>
+          <div className="pt-2">
             <Link
               href="/media-owner/structures/new"
-              className="rounded-xl bg-amber-600 px-4 py-2 text-xs font-bold text-white hover:bg-amber-700"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-amber-600 px-4 py-2 text-xs font-bold text-white hover:bg-amber-700 cursor-pointer"
             >
-              ثبت اولین سازه
+              <PlusCircle className="h-4 w-4" />
+              <span>ثبت اولین سازه</span>
             </Link>
           </div>
         </div>
-      ) : viewMode === "grid" ? (
-        /* نمایش کارتی (Card Grid) */
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {filteredStructures.map((structure) => (
-            <div
-              key={structure.id}
-              className="rounded-2xl border border-border bg-white overflow-hidden shadow-2xs hover:shadow-md transition-all flex flex-col justify-between group"
-            >
-              {/* تصویر و بج وضعیت */}
-              <div className="relative h-44 w-full bg-slate-100 overflow-hidden">
-                <Image
-                  src={structure.images.day || "https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=800&q=80"}
-                  alt={structure.title}
-                  fill
-                  className="object-cover group-hover:scale-105 transition-transform duration-300"
-                />
-                <div className="absolute inset-0 bg-linear-to-t from-black/60 via-transparent to-transparent" />
+      )}
 
-                {/* بج وضعیت */}
-                <div className="absolute top-3 right-3">
-                  {getStatusBadge(structure.status, structure.statusLabel)}
-                </div>
+      {/* نمایش داده‌ها */}
+      {!isStructuresLoading && !isError && structures.length > 0 && (
+        <>
+          {viewMode === "grid" ? (
+            /* نمایش کارتی (Card Grid) */
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {structures.map((structure) => {
+                const mainImage =
+                  (Array.isArray(structure.images) && structure.images.length > 0 && structure.images[0]) ||
+                  structure.image ||
+                  (typeof structure.images === "object" && (structure.images as { day?: string })?.day) ||
+                  null;
 
-                {/* کد و نوع سازه */}
-                <div className="absolute bottom-3 right-3 left-3 flex items-center justify-between text-white text-xs">
-                  <span className="font-mono bg-black/50 backdrop-blur-xs px-2 py-0.5 rounded text-[11px] font-bold">
-                    {structure.code}
-                  </span>
-                  <span className="rounded bg-white/20 backdrop-blur-xs px-2 py-0.5 text-[11px] font-bold">
-                    {structure.type.name}
-                  </span>
-                </div>
-              </div>
+                const typeName =
+                  typeof structure.type === "object" && structure.type?.name
+                    ? structure.type.name
+                    : "سازه تبلیغاتی";
 
-              {/* محتوای متنی کارت */}
-              <div className="p-4 space-y-3 flex-1 flex flex-col justify-between">
-                <div className="space-y-2">
-                  <h3 className="text-sm font-bold text-foreground line-clamp-1">
-                    {structure.title}
-                  </h3>
+                const cityName =
+                  typeof structure.city === "string"
+                    ? structure.city
+                    : (structure.city as { name?: string })?.name || structure.location?.city || "";
 
-                  <p className="text-xs text-muted-foreground flex items-center gap-1.5 line-clamp-1">
-                    <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                    <span>{structure.location.district} - {structure.location.address}</span>
-                  </p>
+                const priceRial = structure.price ?? 0;
 
-                  <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-slate-100">
-                    <div>
-                      <span className="text-[11px] text-muted-foreground block">ابعاد و مساحت:</span>
-                      <strong className="text-slate-800">{structure.dimensions.label}</strong>
-                    </div>
-                    <div>
-                      <span className="text-[11px] text-muted-foreground block">تعرفه ماهانه:</span>
-                      <strong className="text-amber-700 font-sans">
-                        {formatToman(structure.pricing.basePriceMonthly)}
-                      </strong>
-                    </div>
-                  </div>
-
-                  {structure.targetAudience && structure.targetAudience.length > 0 && (
-                    <div className="flex flex-wrap gap-1 pt-1">
-                      {structure.targetAudience.slice(0, 2).map((aud, idx) => (
-                        <span
-                          key={idx}
-                          className="rounded-md bg-slate-100 text-slate-600 px-2 py-0.5 text-[10px]"
-                        >
-                          {aud}
-                        </span>
-                      ))}
-                      {structure.targetAudience.length > 2 && (
-                        <span className="rounded-md bg-slate-100 text-slate-500 px-1.5 py-0.5 text-[10px]">
-                          +{toPersianDigits(structure.targetAudience.length - 2)}
-                        </span>
+                return (
+                  <div
+                    key={structure.id}
+                    className="rounded-2xl border border-border bg-white overflow-hidden shadow-2xs hover:shadow-md transition-all flex flex-col justify-between group"
+                  >
+                    {/* تصویر و بج وضعیت */}
+                    <div className="relative h-44 w-full bg-slate-100 overflow-hidden flex items-center justify-center">
+                      {mainImage ? (
+                        <Image
+                          src={mainImage}
+                          alt={structure.title}
+                          fill
+                          sizes="(max-width: 768px) 100vw, 33vw"
+                          className="object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+                      ) : (
+                        <MapPin className="h-8 w-8 text-slate-300" />
                       )}
+                      <div className="absolute inset-0 bg-linear-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
+
+                      {/* بج وضعیت */}
+                      <div className="absolute top-3 right-3">
+                        {getStatusBadge(structure.status, structure.statusLabel)}
+                      </div>
+
+                      {/* شناسه و نوع سازه */}
+                      <div className="absolute bottom-3 right-3 left-3 flex items-center justify-between text-white text-xs">
+                        <span className="font-mono bg-black/50 backdrop-blur-xs px-2 py-0.5 rounded text-[11px] font-bold">
+                          {structure.code || `#${structure.id}`}
+                        </span>
+                        <span className="rounded bg-white/20 backdrop-blur-xs px-2 py-0.5 text-[11px] font-bold">
+                          {typeName}
+                        </span>
+                      </div>
                     </div>
-                  )}
-                </div>
 
-                {/* دکمه‌های اقدام سریع */}
-                <div className="pt-3 border-t border-border flex items-center justify-between gap-2">
-                  <Link
-                    href={`/structures/${structure.id}`}
-                    target="_blank"
-                    className="inline-flex items-center gap-1 text-xs font-bold text-slate-600 hover:text-foreground p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
-                  >
-                    <ExternalLink className="h-3.5 w-3.5" />
-                    <span>پیش‌نمایش</span>
-                  </Link>
+                    {/* محتوای متنی کارت */}
+                    <div className="p-4 space-y-3 flex-1 flex flex-col justify-between">
+                      <div className="space-y-2">
+                        <h3 className="text-sm font-bold text-foreground line-clamp-1">
+                          {structure.title}
+                        </h3>
 
-                  <Link
-                    href={`/media-owner/structures/${structure.id}/edit`}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-3.5 py-2 text-xs font-bold text-white hover:bg-slate-800 transition-colors shadow-2xs"
-                  >
-                    <Edit3 className="h-3.5 w-3.5" />
-                    <span>ویرایش سازه</span>
-                  </Link>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        /* نمایش جدولی (Table View) */
-        <div className="rounded-2xl border border-border bg-white overflow-hidden shadow-2xs">
-          <div className="overflow-x-auto">
-            <table className="w-full text-right text-xs">
-              <thead className="bg-slate-50 border-b border-border text-slate-600 font-bold">
-                <tr>
-                  <th className="py-3.5 px-4">سازه تبلیغاتی</th>
-                  <th className="py-3.5 px-4">نوع و دسته‌بندی</th>
-                  <th className="py-3.5 px-4">ابعاد</th>
-                  <th className="py-3.5 px-4">قیمت پایه ماهانه</th>
-                  <th className="py-3.5 px-4">وضعیت جاری</th>
-                  <th className="py-3.5 px-4 text-left">عملیات</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border text-slate-700">
-                {filteredStructures.map((structure) => (
-                  <tr key={structure.id} className="hover:bg-slate-50/70 transition-colors">
-                    <td className="py-3.5 px-4">
-                      <div className="flex items-center gap-3">
-                        <div className="relative h-11 w-14 rounded-lg bg-slate-100 overflow-hidden shrink-0">
-                          <Image
-                            src={structure.images.day || "https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=400&q=80"}
-                            alt={structure.title}
-                            fill
-                            className="object-cover"
-                          />
-                        </div>
-                        <div>
-                          <div className="font-bold text-foreground line-clamp-1">
-                            {structure.title}
-                          </div>
-                          <div className="font-mono text-[11px] text-muted-foreground">
-                            {structure.code} • {structure.location.district}
-                          </div>
+                        {(structure.address || cityName) && (
+                          <p className="text-xs text-muted-foreground flex items-center gap-1.5 line-clamp-1">
+                            <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                            <span>
+                              {cityName ? `${cityName} - ` : ""}
+                              {structure.address || ""}
+                            </span>
+                          </p>
+                        )}
+
+                        <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+                          <span className="text-[11px] text-muted-foreground">تعرفه ماهانه اکران:</span>
+                          <strong className="text-amber-700 font-sans font-bold">
+                            {priceRial > 0 ? formatToman(priceRial) : "تعیین نشده"}
+                          </strong>
                         </div>
                       </div>
-                    </td>
 
-                    <td className="py-3.5 px-4 font-bold">
-                      <div>{structure.type.name}</div>
-                      <div className="text-[11px] text-muted-foreground font-normal">
-                        {structure.category.name}
-                      </div>
-                    </td>
-
-                    <td className="py-3.5 px-4 font-mono font-medium">
-                      {structure.dimensions.label}
-                    </td>
-
-                    <td className="py-3.5 px-4 font-black font-sans text-amber-700">
-                      {formatToman(structure.pricing.basePriceMonthly)}
-                    </td>
-
-                    <td className="py-3.5 px-4">
-                      {getStatusBadge(structure.status, structure.statusLabel)}
-                    </td>
-
-                    <td className="py-3.5 px-4 text-left">
-                      <div className="inline-flex items-center gap-2">
+                      {/* دکمه‌های اقدام سریع */}
+                      <div className="pt-3 border-t border-border flex items-center justify-between gap-2">
                         <Link
                           href={`/structures/${structure.id}`}
                           target="_blank"
-                          className="p-1.5 text-slate-500 hover:text-foreground rounded-lg hover:bg-slate-100"
-                          title="مشاهده در کاوشگر نقشه"
+                          className="inline-flex items-center gap-1 text-xs font-bold text-slate-600 hover:text-foreground p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
                         >
-                          <Eye className="h-4 w-4" />
+                          <ExternalLink className="h-3.5 w-3.5" />
+                          <span>پیش‌نمایش</span>
                         </Link>
+
                         <Link
                           href={`/media-owner/structures/${structure.id}/edit`}
-                          className="inline-flex items-center gap-1 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-bold text-white hover:bg-slate-800"
+                          className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-3.5 py-2 text-xs font-bold text-white hover:bg-slate-800 transition-colors shadow-2xs"
                         >
                           <Edit3 className="h-3.5 w-3.5" />
-                          <span>ویرایش</span>
+                          <span>ویرایش سازه</span>
                         </Link>
                       </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            /* نمایش جدولی (Table View) */
+            <div className="rounded-2xl border border-border bg-white overflow-hidden shadow-2xs">
+              <div className="overflow-x-auto">
+                <table className="w-full text-right text-xs">
+                  <thead className="bg-slate-50 border-b border-border text-slate-600 font-bold">
+                    <tr>
+                      <th className="py-3.5 px-4">سازه تبلیغاتی</th>
+                      <th className="py-3.5 px-4">نوع</th>
+                      <th className="py-3.5 px-4">تعرفه ماهانه (تومان)</th>
+                      <th className="py-3.5 px-4">وضعیت</th>
+                      <th className="py-3.5 px-4 text-left">عملیات</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border text-slate-700">
+                    {structures.map((structure) => {
+                      const mainImage =
+                        (Array.isArray(structure.images) && structure.images.length > 0 && structure.images[0]) ||
+                        structure.image ||
+                        null;
+
+                      const typeName =
+                        typeof structure.type === "object" && structure.type?.name
+                          ? structure.type.name
+                          : "سازه تبلیغاتی";
+
+                      const priceRial = structure.price ?? 0;
+
+                      return (
+                        <tr key={structure.id} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="py-3.5 px-4">
+                            <div className="flex items-center gap-3">
+                              <div className="relative h-11 w-14 rounded-lg bg-slate-100 overflow-hidden shrink-0 flex items-center justify-center">
+                                {mainImage ? (
+                                  <Image
+                                    src={mainImage}
+                                    alt={structure.title}
+                                    fill
+                                    className="object-cover"
+                                  />
+                                ) : (
+                                  <MapPin className="h-4 w-4 text-slate-400" />
+                                )}
+                              </div>
+                              <div>
+                                <div className="font-bold text-foreground line-clamp-1">
+                                  {structure.title}
+                                </div>
+                                <div className="font-mono text-[11px] text-muted-foreground">
+                                  {structure.code || `#${structure.id}`} • {structure.address || "آدرس ثبت نشده"}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="py-3.5 px-4 font-bold">{typeName}</td>
+
+                          <td className="py-3.5 px-4 font-black font-sans text-amber-700">
+                            {priceRial > 0 ? formatToman(priceRial) : "تعیین نشده"}
+                          </td>
+
+                          <td className="py-3.5 px-4">
+                            {getStatusBadge(structure.status, structure.statusLabel)}
+                          </td>
+
+                          <td className="py-3.5 px-4 text-left">
+                            <div className="inline-flex items-center gap-2">
+                              <Link
+                                href={`/structures/${structure.id}`}
+                                target="_blank"
+                                className="p-1.5 text-slate-500 hover:text-foreground rounded-lg hover:bg-slate-100"
+                                title="مشاهده پیش‌نمایش"
+                              >
+                                <Eye className="h-4 w-4" />
+                              </Link>
+                              <Link
+                                href={`/media-owner/structures/${structure.id}/edit`}
+                                className="inline-flex items-center gap-1 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-bold text-white hover:bg-slate-800"
+                              >
+                                <Edit3 className="h-3.5 w-3.5" />
+                                <span>ویرایش</span>
+                              </Link>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* کنترل صفحه‌بندی سروری */}
+          {lastPage > 1 && (
+            <div className="flex items-center justify-between pt-4 border-t border-border">
+              <div className="text-xs text-muted-foreground">
+                صفحه {toPersianDigits(currentPage)} از {toPersianDigits(lastPage)} (مجموع{" "}
+                {toPersianDigits(totalCount)} سازه)
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.max(p - 1, 1))}
+                  disabled={currentPage <= 1}
+                  className="inline-flex items-center gap-1 rounded-xl border border-border bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                  <span>صفحه قبل</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.min(p + 1, lastPage))}
+                  disabled={currentPage >= lastPage}
+                  className="inline-flex items-center gap-1 rounded-xl border border-border bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
+                >
+                  <span>صفحه بعد</span>
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

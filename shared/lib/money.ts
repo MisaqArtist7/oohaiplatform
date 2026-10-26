@@ -62,3 +62,21 @@ export function formatTomanDirect(tomanAmount: MoneyInput): string {
   const toman = Math.floor(parseMoney(tomanAmount));
   return `${new Intl.NumberFormat("fa-IR").format(toman)} تومان`;
 }
+
+/**
+ * قالب‌بندی خلاصه قیمت برای پین‌های نقشه و برچسب‌های سریع
+ * @param rialAmount مبلغ به ریال (یا تومان مستقیم در صورت ارسال)
+ */
+export function formatShortToman(rialAmount: MoneyInput): string {
+  const toman = rialToToman(rialAmount);
+  if (toman >= 1_000_000_000) {
+    const b = (toman / 1_000_000_000).toFixed(1).replace(/\.0$/, "");
+    return `${new Intl.NumberFormat("fa-IR").format(Number(b))} میلیارد`;
+  }
+  if (toman >= 1_000_000) {
+    const m = (toman / 1_000_000).toFixed(0);
+    return `${new Intl.NumberFormat("fa-IR").format(Number(m))} م`;
+  }
+  return formatToman(rialAmount);
+}
+

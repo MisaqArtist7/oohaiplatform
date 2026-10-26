@@ -19,8 +19,9 @@ import {
   Calendar,
 } from "lucide-react";
 import { toast } from "sonner";
-import { Structure, BookingResponse } from "@/features/structures";
-import { formatToman, toPersianDigits } from "@/lib/mock-data";
+import type { Structure, BookingResponse } from "@/features/structures/types";
+import { formatToman } from "@/shared/lib/money";
+import { toPersianDigits } from "@/shared/lib/digits";
 import {
   bookingRequestSchema,
   BookingRequestFormValues,
@@ -59,7 +60,7 @@ export default function BookingSidebar({ structure }: BookingSidebarProps) {
   } = useForm<BookingRequestFormValues>({
     resolver: zodResolver(bookingRequestSchema),
     defaultValues: {
-      structureId: structure.id,
+      structureId: String(structure.id),
       fullName: "",
       phone: "",
       brandName: "",
@@ -80,20 +81,21 @@ export default function BookingSidebar({ structure }: BookingSidebarProps) {
       const e = new Date(end);
       const diffTime = e.getTime() - s.getTime();
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      return Math.max(diffDays, structure.specs.minDurationDays || 15);
+      return Math.max(diffDays, structure.specs?.minDurationDays || 15);
     } catch {
       return 30;
     }
   };
 
   const currentDurationDays = calculateDays(startDate, endDate);
-  const dailyRate = structure.pricing.dailyRate;
+  const dailyRate =
+    structure.pricing?.dailyRate || Math.round((structure.price || 0) / 30);
   const rawTotal = currentDurationDays * dailyRate;
 
   // تخفیف ماهانه در صورتی که مدت بیش از ۳۰ روز باشد
   const discountPercent =
     currentDurationDays >= 30
-      ? structure.pricing.discountMonthlyPercent || 5
+      ? structure.pricing?.discountMonthlyPercent || 5
       : 0;
   const discountAmount = Math.round((rawTotal * discountPercent) / 100);
   const estimatedTotal = rawTotal - discountAmount;
@@ -112,7 +114,7 @@ export default function BookingSidebar({ structure }: BookingSidebarProps) {
     try {
       const payload = {
         ...values,
-        structureId: structure.id,
+        structureId: String(structure.id),
         durationDays: currentDurationDays,
         estimatedPrice: estimatedTotal,
       };
@@ -149,7 +151,7 @@ export default function BookingSidebar({ structure }: BookingSidebarProps) {
                 <span className="text-xs font-semibold text-muted-foreground">تومان / روزانه</span>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
-                تعرفه ماهانه: {toPersianDigits(structure.pricing.basePriceMonthly.toLocaleString("fa-IR"))} تومان
+                تعرفه ماهانه: {toPersianDigits((structure.pricing?.basePriceMonthly ?? structure.price ?? 0).toLocaleString("fa-IR"))} تومان
               </p>
             </div>
 

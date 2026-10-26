@@ -1,12 +1,8 @@
 import { Metadata } from "next";
+import { Suspense } from "react";
 import { StructureFormView } from "@/features/media-owner";
-import { structuresStore } from "@/lib/mock-data";
 
-export function generateStaticParams() {
-  return structuresStore.map((s) => ({
-    structureId: s.id,
-  }));
-}
+export const instant = false;
 
 interface EditPageProps {
   params: Promise<{
@@ -20,11 +16,15 @@ export async function generateMetadata(
   const { structureId } = await props.params;
   return {
     title: `ویرایش سازه ${structureId} | پنل مالکان رسانه`,
-    description: "ویرایش ابعاد، قیمت پایه، موقعیت مکانی و تصاویر سازه تبلیغاتی.",
+    description: "ویرایش مشخصات، قیمت پایه و موقعیت مکانی سازه تبلیغاتی.",
   };
 }
 
 export default async function EditStructurePage(props: EditPageProps) {
   const { structureId } = await props.params;
-  return <StructureFormView structureId={structureId} />;
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-muted-foreground">در حال بارگذاری فرم ویرایش...</div>}>
+      <StructureFormView structureId={structureId} />
+    </Suspense>
+  );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -20,8 +20,10 @@ import {
   ChevronLeft,
 } from "lucide-react";
 import { ProposalItem } from "../types";
-import { fetchProposalById, fetchLocations, LocationCity } from "../api/proposals.api";
-import { formatToman, toPersianDigits } from "@/lib/mock-data";
+import { fetchProposalById } from "../api/proposals.api";
+import { formatToman } from "@/shared/lib/money";
+import { toPersianDigits } from "@/shared/lib/digits";
+import { CityCascader } from "@/features/locations/components/CityCascader";
 import {
   useProposalsQuery,
   useCreateProposalMutation,
@@ -45,20 +47,6 @@ export default function ProposalsView() {
   // مودال نمایش جزئیات پیشنهاد
   const [selectedProposal, setSelectedProposal] = useState<ProposalItem | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
-
-  const [cities, setCities] = useState<LocationCity[]>([]);
-
-  useEffect(() => {
-    let isMounted = true;
-    fetchLocations().then((list) => {
-      if (isMounted && list && list.length > 0) {
-        setCities(list);
-      }
-    });
-    return () => {
-      isMounted = false;
-    };
-  }, []);
 
   const budgetPresets = [
     { label: "۱۵۰ میلیون", value: 150000000 },
@@ -89,11 +77,6 @@ export default function ProposalsView() {
   const watchBudget = watch("budget");
   const watchCityId = watch("city_id");
 
-  const handleCityChange = (cId: number) => {
-    setValue("city_id", cId);
-    const found = cities.find((c) => c.id === cId);
-    if (found) setValue("cityName", found.name);
-  };
 
   const onSubmit = async (data: ProposalFormValues) => {
     try {
@@ -242,27 +225,22 @@ export default function ProposalsView() {
                 )}
               </div>
 
-              {/* انتخاب شهر هدف */}
-              <div>
-                <label className="block text-xs font-bold text-foreground mb-1">
-                  شهر یا حوزه جغرافیایی اکران: <span className="text-rose-500">*</span>
+              {/* انتخاب شهر هدف آبشاری */}
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-foreground">
+                  استان و شهر هدف اکران: <span className="text-rose-500">*</span>
                 </label>
-                <div className="flex flex-wrap gap-2">
-                  {cities.map((c) => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => handleCityChange(c.id)}
-                      className={`rounded-xl px-4 py-2 text-xs font-bold border transition-all cursor-pointer ${
-                        watchCityId === c.id
-                          ? "bg-slate-900 text-white border-slate-900 shadow-xs"
-                          : "bg-slate-50 border-border text-slate-700 hover:bg-slate-100"
-                      }`}
-                    >
-                      {c.name}
-                    </button>
-                  ))}
-                </div>
+                <CityCascader
+                  selectedCityId={watchCityId}
+                  onCitySelect={(city, prov) => {
+                    if (city) {
+                      setValue("city_id", city.id);
+                      setValue("cityName", city.name);
+                    } else if (prov) {
+                      setValue("cityName", prov.name);
+                    }
+                  }}
+                />
               </div>
 
               {/* شرح سناریوی کمپین و مخاطبان */}

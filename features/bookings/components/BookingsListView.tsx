@@ -25,7 +25,8 @@ import {
 } from "lucide-react";
 import { ClientBooking } from "../types";
 import { fetchProformaDownloadToken } from "../api/bookings.api";
-import { formatToman, toPersianDigits } from "@/lib/mock-data";
+import { formatToman } from "@/shared/lib/money";
+import { toPersianDigits } from "@/shared/lib/digits";
 import { useClientBookingsQuery } from "../hooks/useBookings";
 
 export default function BookingsListView() {
