@@ -20,6 +20,14 @@ const nextConfig: NextConfig = {
       },
     },
   },
+  async rewrites() {
+    return [
+      {
+        source: "/api/vi/:path*",
+        destination: "/api/v1/:path*",
+      },
+    ];
+  },
 };
 
 export default nextConfig;
