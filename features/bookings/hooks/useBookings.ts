@@ -1,6 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { createBooking, listBookings, getBooking } from "../api/bookings.api";
+import {
+  createBooking,
+  listBookings,
+  getBooking,
+  submitPayment,
+  getDocumentDownloadUrl,
+} from "../api/bookings.api";
 import { CreateBookingPayload, BookingListFilters, Booking } from "../types";
 import { Page } from "@/shared/lib/pagination";
 
@@ -52,5 +58,37 @@ export function useCreateBookingMutation() {
         router.push(`/client/bookings/${booking.uuid}`);
       }
     },
+  });
+}
+
+/**
+ * هوک ثبت سند پرداخت (فیش واریز یا چک صیادی)
+ * پس از موفقیت، کوئری‌های جزئیات و لیست اینولیدیت می‌شوند تا وضعیت جدید با refetch بازیابی گردد.
+ */
+export function useSubmitPayment(bookingUuid: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (formData: FormData) => submitPayment(bookingUuid, formData),
+    onSuccess: () => {
+      // شکل پاسخ سرور فرض نمی‌شود و صرفاً کش‌ها اینولیدیت می‌گردند
+      queryClient.invalidateQueries({
+        queryKey: bookingsQueryKeys.detail(bookingUuid),
+      });
+      queryClient.invalidateQueries({
+        queryKey: bookingsQueryKeys.lists(),
+      });
+    },
+  });
+}
+
+/**
+ * هوک دریافت لینک دانلود امن مدارک (Signed URL با انقضای ۱۵ دقیقه)
+ * به صورت mutation مستقیم اجرا می‌شود و خروجی در کش ذخیره نمی‌گردد
+ */
+export function useDocumentDownload(bookingUuid: string) {
+  return useMutation({
+    mutationFn: (documentId: number | string) =>
+      getDocumentDownloadUrl(bookingUuid, documentId),
   });
 }

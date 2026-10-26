@@ -1,12 +1,12 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import Link from "next/link";
+import { toast } from "sonner";
 import {
   ArrowRight,
   Building2,
   Calendar,
-  CreditCard,
   FileText,
   Clock,
   AlertTriangle,
@@ -17,14 +17,18 @@ import {
   FileCheck2,
   User,
   Info,
+  Download,
+  Sparkles,
 } from "lucide-react";
-import { useBookingDetailQuery } from "../hooks/useBookings";
+import { useBookingDetailQuery, useDocumentDownload } from "../hooks/useBookings";
 import { BOOKING_STEPPER_STEPS } from "../constants";
 import BookingStatusBadge from "./BookingStatusBadge";
 import LockCountdown from "./LockCountdown";
+import PaymentSubmissionForm from "./PaymentSubmissionForm";
 import { formatToman } from "@/shared/lib/money";
 import { toPersianDigits } from "@/shared/lib/digits";
 import { formatJalali } from "@/shared/lib/dates";
+import { ApiError } from "@/shared/lib/errors";
 import { Button } from "@/shared/components/ui/button";
 
 interface BookingDetailViewProps {
@@ -39,6 +43,24 @@ const roleTranslations: Record<string, string> = {
   client: "مشتری / متقاضی",
 };
 
+/**
+ * برچسب نوع مدرک مطابق سند:
+ * proforma_invoice=«پیش‌فاکتور»، payment_receipt=«فیش واریز»، sayadi_check=«چک صیادی»
+ * هر مقدار ناشناخته دیگر به صورت رشته خام نمایش داده می‌شود.
+ */
+function getDocumentTypeLabel(type: string): string {
+  switch (type) {
+    case "proforma_invoice":
+      return "پیش‌فاکتور";
+    case "payment_receipt":
+      return "فیش واریز";
+    case "sayadi_check":
+      return "چک صیادی";
+    default:
+      return type;
+  }
+}
+
 export default function BookingDetailView({
   bookingUuid,
   backUrl = "/client/bookings",
@@ -50,6 +72,66 @@ export default function BookingDetailView({
     error,
     refetch,
   } = useBookingDetailQuery(bookingUuid);
+
+  const downloadMutation = useDocumentDownload(bookingUuid);
+  const [downloadingDocId, setDownloadingDocId] = useState<number | string | null>(null);
+
+  /**
+   * رفتار دانلود امن مدرک (Signed URL):
+   * ۱. باز کردن تب خالی قبل از فراخوانی غیرهمگام جهت جلوگیری از پاپ‌آپ بلاکر
+   * ۲. عدم ذخیره یا کش download_url در استیت یا ری‌اکت‌کوئری (اعتبار ۱۵ دقیقه‌ای)
+   * ۳. تنظیم opener = null و انتقال آدرس به تب
+   * ۴. بستن تب در صورت بروز خطا و نمایش toast در صورت مسدود شدن پاپ‌آپ
+   * ۵. عدم لاگ کردن URL در کنسول
+   */
+  const handleDownload = async (documentId: number | string) => {
+    if (downloadingDocId) return;
+
+    let newTab: Window | null = null;
+    try {
+      newTab = window.open("about:blank", "_blank");
+    } catch {
+      newTab = null;
+    }
+
+    setDownloadingDocId(documentId);
+
+    try {
+      const res = await downloadMutation.mutateAsync(documentId);
+
+      if (res?.download_url) {
+        if (newTab && !newTab.closed) {
+          newTab.opener = null;
+          newTab.location.href = res.download_url;
+        } else {
+          toast.info("لینک دانلود امن آماده شد", {
+            action: {
+              label: "باز کردن لینک",
+              onClick: () => {
+                window.open(res.download_url, "_blank", "noopener,noreferrer");
+              },
+            },
+          });
+        }
+      } else {
+        newTab?.close();
+        toast.error("دسترسی به این مدرک ممکن نیست");
+      }
+    } catch (err: unknown) {
+      newTab?.close();
+      if (err instanceof ApiError) {
+        if (err.status === 403 || err.status === 404) {
+          toast.error("دسترسی به این مدرک ممکن نیست");
+          return;
+        }
+        toast.error(err.message || "خطا در دریافت لینک دانلود");
+        return;
+      }
+      toast.error("دسترسی به این مدرک ممکن نیست");
+    } finally {
+      setDownloadingDocId(null);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -101,6 +183,11 @@ export default function BookingDetailView({
   // مرتب‌سازی زمانی لاگ‌ها
   const sortedLogs = [...(booking.logs || [])].sort(
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  );
+
+  // جستجوی وجود پیش‌فاکتور رسمی در مدارک جهت نمایش کارت برجسته (صرفاً بر اساس وجود سند، نه وضعیت)
+  const proformaDoc = booking.documents?.find(
+    (doc) => doc.document_type === "proforma_invoice"
   );
 
   return (
@@ -326,33 +413,59 @@ export default function BookingDetailView({
           </div>
         </div>
 
-        {/* ستون چپ: مدارک و عملیات مجاز (قانون ۱۰) */}
+        {/* ستون چپ: مدارک، کارت برجسته پیش‌فاکتور، و فرم پرداخت (قانون ۱۰) */}
         <div className="space-y-6">
-          {/* بخش عملیات: فقط بر اساس allowed_actions */}
-          {booking.allowed_actions?.includes("submit_payment") ? (
-            <div className="rounded-2xl border border-primary/30 bg-primary/5 p-6 shadow-2xs space-y-3">
-              <div className="flex items-center gap-2 text-primary font-bold text-sm">
-                <CreditCard className="h-5 w-5" />
-                <span>اقدام لازم: ثبت سند پرداخت</span>
-              </div>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                پیش‌فاکتور برای این رزرو صادر شده و سازه قفل گردیده است. جهت تثبیت قرارداد، فیش واریزی یا چک خود را ثبت فرمایید.
-              </p>
-
-              {/* TASK-7: payment form */}
-              <div className="pt-2">
-                <div className="rounded-xl border border-dashed border-primary/40 bg-background p-4 text-center space-y-2">
-                  <CreditCard className="h-6 w-6 text-primary mx-auto" />
-                  <p className="text-xs font-semibold text-foreground">
-                    فرم پرداخت آنلاین و آپلود فیش در تسک ۷ متصل می‌شود.
-                  </p>
-                  <span className="text-[11px] text-muted-foreground block">
-                    {/* TASK-7: PaymentSubmissionForm will be mounted here */}
-                    امکان بارگذاری فیش / چک به زودی فعال می‌گردد.
-                  </span>
+          {/* کارت برجسته پیش‌فاکتور رسمی (صرفاً در صورت وجود سندی از نوع proforma_invoice، فارغ از وضعیت) */}
+          {proformaDoc && (
+            <div className="rounded-2xl border-2 border-primary/40 bg-linear-to-bl from-primary/5 via-card to-background p-5 shadow-xs space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 rounded-xl bg-primary text-primary-foreground shadow-xs">
+                    <Sparkles className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-black text-foreground">
+                      پیش‌فاکتور رسمی
+                    </h3>
+                    <span className="text-[10px] text-muted-foreground">
+                      اسناد رسمی قرارداد اکران
+                    </span>
+                  </div>
                 </div>
+
+                <Button
+                  size="sm"
+                  onClick={() => handleDownload(proformaDoc.id)}
+                  disabled={downloadingDocId === proformaDoc.id}
+                  className="h-8 gap-1.5 text-xs font-bold"
+                >
+                  {downloadingDocId === proformaDoc.id ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Download className="h-3.5 w-3.5" />
+                  )}
+                  <span>دانلود پیش‌فاکتور</span>
+                </Button>
+              </div>
+
+              <div className="p-3 rounded-xl border border-border bg-card/60 flex items-center justify-between text-[11px] text-muted-foreground">
+                <span className="truncate max-w-[180px]" dir="ltr">
+                  {proformaDoc.original_filename}
+                </span>
+                <span>
+                  {toPersianDigits(Math.round(proformaDoc.file_size / 1024))} کیلوبایت
+                </span>
               </div>
             </div>
+          )}
+
+          {/* فرم ثبت پرداخت: فقط و فقط بر اساس allowed_actions شامل submit_payment (قانون ۱۰) */}
+          {booking.allowed_actions?.includes("submit_payment") ? (
+            <PaymentSubmissionForm
+              bookingUuid={booking.uuid}
+              totalAmount={booking.total_amount}
+              onSuccess={() => refetch()}
+            />
           ) : (
             <div className="rounded-2xl border border-border bg-card p-5 shadow-2xs text-xs text-muted-foreground flex items-center gap-2">
               <Info className="h-4 w-4 text-primary shrink-0" />
@@ -360,11 +473,11 @@ export default function BookingDetailView({
             </div>
           )}
 
-          {/* لیست مدارک (بدون دکمه دانلود - تسک ۷) */}
+          {/* لیست کلی مدارک همراه با دکمه دانلود امن */}
           <div className="rounded-2xl border border-border bg-card p-6 shadow-2xs space-y-4">
             <h2 className="text-sm font-bold text-foreground flex items-center gap-2 border-b border-border pb-3">
               <FileText className="h-4 w-4 text-primary" />
-              <span>اسناد و پیش‌فاکتورها</span>
+              <span>کلیه اسناد و مدارک رزرو</span>
             </h2>
 
             {!booking.documents || booking.documents.length === 0 ? (
@@ -372,28 +485,45 @@ export default function BookingDetailView({
                 سندی برای این رزرو بارگذاری نشده است.
               </p>
             ) : (
-              <div className="space-y-2.5">
+              <div className="space-y-3">
                 {booking.documents.map((doc) => (
                   <div
-                    key={doc.uuid}
-                    className="rounded-xl border border-border bg-muted/20 p-3 space-y-1.5 text-xs"
+                    key={doc.uuid || doc.id}
+                    className="rounded-xl border border-border bg-muted/20 p-3.5 space-y-2 text-xs"
                   >
-                    <div className="flex items-center gap-2">
-                      <FileCheck2 className="h-4 w-4 text-primary shrink-0" />
-                      <span className="font-bold text-foreground truncate" dir="ltr">
-                        {doc.original_filename}
-                      </span>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <FileCheck2 className="h-4 w-4 text-primary shrink-0" />
+                        <span className="font-bold text-foreground truncate" dir="ltr">
+                          {doc.original_filename}
+                        </span>
+                      </div>
+
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={downloadingDocId === doc.id}
+                        onClick={() => handleDownload(doc.id)}
+                        className="h-7 px-2.5 text-[11px] gap-1 shrink-0 font-bold"
+                      >
+                        {downloadingDocId === doc.id ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <Download className="h-3 w-3" />
+                        )}
+                        <span>دانلود</span>
+                      </Button>
                     </div>
 
                     <div className="flex flex-wrap items-center justify-between text-[11px] text-muted-foreground gap-2 pt-1 border-t border-border/50">
-                      <span>نوع: {doc.document_type}</span>
+                      <span>نوع: {getDocumentTypeLabel(doc.document_type)}</span>
                       <span>
                         حجم: {toPersianDigits(Math.round(doc.file_size / 1024))} کیلوبایت
                       </span>
                     </div>
 
                     <div className="text-[10px] text-muted-foreground">
-                      تاریخ: {toPersianDigits(formatJalali(doc.created_at, true))}
+                      تاریخ ثبت: {toPersianDigits(formatJalali(doc.created_at, true))}
                     </div>
                   </div>
                 ))}

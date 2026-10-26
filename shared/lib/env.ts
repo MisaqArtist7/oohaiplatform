@@ -41,12 +41,7 @@ export function getBackendUrl(): string {
     throw new Error("خطای امنیتی: متغیر BACKEND_URL فقط در محیط سرور در دسترس است و نباید به کلاینت نشت کند.");
   }
 
-  const rawValue = process.env.BACKEND_URL;
-  if (!rawValue) {
-    throw new Error(
-      "خطای پیکربندی: متغیر محیطی BACKEND_URL در سمت سرور یافت نشد. لطفاً مقدار BACKEND_URL را در متغیرهای محیطی سیستم تنظیم کنید."
-    );
-  }
+  const rawValue = process.env.BACKEND_URL || "http://localhost:8085";
 
   const result = serverEnvSchema.safeParse({ BACKEND_URL: rawValue });
   if (!result.success) {

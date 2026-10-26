@@ -102,6 +102,13 @@ export interface BookingListFilters {
   status?: BookingStatusValue | string;
 }
 
+export type PaymentDocumentType = "payment_receipt" | "sayadi_check";
+
+export interface DocumentDownloadResponse {
+  download_url: string;
+  expires_in_minutes: number;
+}
+
 // تایپ‌های مربوط به پروپوزال و مالکان رسانه (تسک‌های ۸ و مرتبط)
 export interface ProposalRecommendedStructure {
   structureId: string;

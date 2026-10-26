@@ -8,6 +8,7 @@ import {
   Booking,
   CreateBookingPayload,
   BookingListFilters,
+  DocumentDownloadResponse,
 } from "../types";
 
 /**
@@ -78,3 +79,31 @@ export async function getBooking(uuid: string): Promise<Booking> {
 
   return response as Booking;
 }
+
+/**
+ * ثبت فیش واریز یا چک صیادی (POST /api/v1/client/bookings/{bookingUuid}/payment)
+ * ارسال با فرمت multipart/form-data بدون تنظیم دستی Content-Type (هندل خودکار توسط http.ts)
+ */
+export async function submitPayment(
+  bookingUuid: string,
+  formData: FormData
+): Promise<unknown> {
+  return http.post<unknown>(
+    `/client/bookings/${encodeURIComponent(bookingUuid)}/payment`,
+    formData
+  );
+}
+
+/**
+ * دریافت لینک دانلود امن مدارک و پیش‌فاکتور (GET /api/v1/client/bookings/{bookingUuid}/documents/{documentId}/download)
+ * خروجی بدون envelope و دارای download_url با امضای موقت ۱۵ دقیقه‌ای است
+ */
+export async function getDocumentDownloadUrl(
+  bookingUuid: string,
+  documentId: number | string
+): Promise<DocumentDownloadResponse> {
+  return http.get<DocumentDownloadResponse>(
+    `/client/bookings/${encodeURIComponent(bookingUuid)}/documents/${encodeURIComponent(String(documentId))}/download`
+  );
+}
+

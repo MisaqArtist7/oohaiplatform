@@ -59,21 +59,58 @@ export const createBookingSchema = z
 export type CreateBookingFormValues = z.infer<typeof createBookingSchema>;
 
 /**
- * اسکیمای ثبت و ارسال فیش واریز ساتنا یا چک صیادی (نگهداری برای تسک ۷)
+ * اسکیمای ثبت اطلاعات پرداخت (فیش واریز ساتنا یا چک صیادی) مطابق سند بک‌اند
+ * اعتبارسنجی فایل به صورت کاملاً SSR-safe پیاده‌سازی شده است.
  */
 export const paymentSubmissionSchema = z.object({
-  bookingId: z.string().min(1, "شناسه پرونده رزرو الزامی است"),
-  method: z.enum(["satna", "sayad_check"]),
+  document: z
+    .custom<File | null | undefined>()
+    .refine(
+      (file) => {
+        if (typeof window === "undefined") return true;
+        return typeof File !== "undefined" && file instanceof File;
+      },
+      "بارگذاری فایل تصویر فیش واریز یا چک صیادی الزامی است"
+    )
+    .refine(
+      (file) => {
+        if (typeof window === "undefined" || !file || !(file instanceof File)) return true;
+        return file.size <= 10 * 1024 * 1024;
+      },
+      "حجم فایل نمی‌تواند بیش از ۱۰ مگابایت باشد"
+    )
+    .refine(
+      (file) => {
+        if (typeof window === "undefined" || !file || !(file instanceof File)) return true;
+        return file.type === "application/pdf" || file.type.startsWith("image/");
+      },
+      "فرمت فایل باید PDF یا تصویر (JPG, PNG, WebP) باشد"
+    ),
+
+  document_type: z.enum(["payment_receipt", "sayadi_check"], {
+    message: "نوع مدرک پرداخت نامعتبر است",
+  }),
+
+  payment_reference: z
+    .string()
+    .min(1, "کد رهگیری یا شناسه صیادی الزامی است")
+    .refine(
+      (val) => toEnglishDigits(val).trim().length >= 6,
+      "شناسه رهگیری پرداخت باید حداقل ۶ کاراکتر باشد"
+    ),
+
   amount: z
-    .number()
-    .min(100000, "مبلغ پرداختی باید حداقل ۱۰۰٬۰۰۰ تومان باشد"),
-  bankName: z.string().optional(),
-  trackingCode: z.string().optional(),
-  checkSerial: z.string().optional(),
-  checkSayadId: z.string().optional(),
-  dueDate: z.string().optional(),
-  receiptUrl: z.string().optional(),
-  notes: z.string().max(500).optional(),
+    .string()
+    .optional()
+    .refine((val) => {
+      if (!val || !val.trim()) return true;
+      const cleaned = toEnglishDigits(val).trim().replace(/,/g, "");
+      const n = Number(cleaned);
+      return !isNaN(n) && n > 0;
+    }, "مبلغ پرداختی باید بزرگتر از صفر باشد"),
+
+  note: z.string().max(1000, "یادداشت نمی‌تواند بیش از ۱۰۰۰ کاراکتر باشد").optional(),
 });
 
 export type PaymentSubmissionFormValues = z.infer<typeof paymentSubmissionSchema>;
+
