@@ -3,7 +3,8 @@ import type { User, AuthRole, AuthPermission } from "../types";
 
 /**
  * دریافت سشن کاربر در سرور کامپوننت‌ها از روی کوکی‌های معتبر
- */
+*/
+
 export async function getServerSession(): Promise<User | null> {
   try {
     const store = await cookies();
