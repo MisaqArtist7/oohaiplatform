@@ -5,38 +5,55 @@ import type {
   User,
   VerifyOtpPayload,
 } from "../types";
-import { getRedirectPath } from "../redirect-by-permissions";
+import { getHomePath } from "../lib/get-home-path";
+import { toEnglishDigits, toPersianDigits } from "@/shared/lib/digits";
 
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ?? "https://oohaiplatform.ir/api/v1";
 
 export const IRAN_PHONE_REGEX = /^09[0-9]{9}$/;
 
+export class ApiError extends Error {
+  status: number;
+  data: unknown;
+  fieldErrors?: Record<string, string>;
+  retryAfter?: number;
+
+  constructor(
+    status: number,
+    message: string,
+    data?: unknown,
+    fieldErrors?: Record<string, string>,
+    retryAfter?: number
+  ) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.data = data;
+    this.fieldErrors = fieldErrors;
+    this.retryAfter = retryAfter;
+  }
+}
+
 /**
  * تبدیل ارقام فارسی و عربی به ارقام انگلیسی
  */
-export function toEnDigits(input: string): string {
-  if (!input) return "";
-  return input
-    .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 1776))
-    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 1632))
-    .trim();
+export function toEnDigits(input: string | undefined | null): string {
+  return toEnglishDigits(input);
 }
 
 /**
  * تبدیل ارقام انگلیسی به فارسی برای نمایش
  */
-export function toFaDigits(input: string | number): string {
-  if (input === null || input === undefined) return "";
-  const str = String(input);
-  return str.replace(/[0-9]/g, (d) => String.fromCharCode(d.charCodeAt(0) + 1728));
+export function toFaDigits(input: string | number | undefined | null): string {
+  return toPersianDigits(input);
 }
 
 /**
  * ماسک کردن شماره تلفن برای نمایش امن: ۰۹۱۲****۷۸۹
  */
 export function maskPhone(phone: string): string {
-  const clean = toEnDigits(phone);
+  const clean = toEnglishDigits(phone);
   if (!clean || clean.length < 11) return phone;
   return clean.replace(/^(\d{4})\d{4}(\d{3})$/, "$1****$2");
 }
@@ -45,7 +62,7 @@ export function maskPhone(phone: string): string {
  * فرمت خوانای شماره تماس: ۰۹۱۲ ۳۴۵ ۶۷۸۹
  */
 export function formatPhoneSpacing(phone: string): string {
-  const clean = toEnDigits(phone);
+  const clean = toEnglishDigits(phone);
   if (clean.length === 11) {
     return `${clean.slice(0, 4)} ${clean.slice(4, 7)} ${clean.slice(7)}`;
   }
@@ -58,6 +75,27 @@ export interface ApiCallResult<T = unknown> {
   data: AuthApiResponse<T> | null;
   errorMessage: string | null;
   fieldErrors?: Record<string, string>;
+  retryAfter?: number;
+}
+
+/**
+ * استخراج زمان انتظار (Retry-After) در صورت وقوع خطای Rate Limit (کد ۴۲۹)
+ */
+function extractRetryAfter(res: Response, data: AuthApiResponse<unknown> | null): number | undefined {
+  const headerVal =
+    res.headers.get("retry-after") ??
+    res.headers.get("Retry-After");
+
+  if (headerVal) {
+    const parsed = parseInt(headerVal, 10);
+    if (!isNaN(parsed) && parsed > 0) return parsed;
+  }
+
+  if (data?.retry_after && typeof data.retry_after === "number" && data.retry_after > 0) {
+    return data.retry_after;
+  }
+
+  return undefined;
 }
 
 /**
@@ -79,6 +117,18 @@ async function apiFetch<T>(
     });
 
     const data: AuthApiResponse<T> = await res.json().catch(() => null);
+
+    if (res.status === 429) {
+      const retryAfter = extractRetryAfter(res, data);
+      return {
+        ok: false,
+        status: 429,
+        data,
+        errorMessage:
+          data?.message || "تعداد درخواست‌ها زیاد است، کمی بعد تلاش کنید.",
+        retryAfter,
+      };
+    }
 
     if (res.status === 422 && data?.errors) {
       const fieldErrors: Record<string, string> = {};
@@ -125,10 +175,7 @@ async function apiFetch<T>(
       ok: false,
       status: 0,
       data: null,
-      errorMessage:
-        err instanceof TypeError
-          ? "عدم برقراری ارتباط با سرور. لطفاً اتصال اینترنت خود را بررسی کنید."
-          : (err as Error).message || "خطای ناشناخته رخ داد.",
+      errorMessage: "ارتباط با سرور برقرار نشد. لطفاً اتصال اینترنت خود را بررسی کنید.",
     };
   }
 }
@@ -141,7 +188,7 @@ export async function apiRegister(payload: RegisterPayload) {
     method: "POST",
     body: JSON.stringify({
       name: payload.name.trim(),
-      phone: toEnDigits(payload.phone),
+      phone: toEnglishDigits(payload.phone),
     }),
   });
 }
@@ -153,13 +200,13 @@ export async function apiRequestOtp(payload: RequestOtpPayload) {
   return apiFetch<null>("/otp/request", {
     method: "POST",
     body: JSON.stringify({
-      phone: toEnDigits(payload.phone),
+      phone: toEnglishDigits(payload.phone),
     }),
   });
 }
 
 /**
- * ۳. تأیید کد یکبار مصرف از طریق Route Handler داخلی (برای ست شدن امن Cookie)
+ * ۳. تأیید کد یکبار مصرف از طریق BFF Route Handler
  */
 export async function apiVerifyOtp(payload: VerifyOtpPayload): Promise<{
   ok: boolean;
@@ -170,15 +217,15 @@ export async function apiVerifyOtp(payload: VerifyOtpPayload): Promise<{
   fieldErrors?: Record<string, string>;
 }> {
   try {
-    const res = await fetch("/api/v1/otp/verify", {
+    const res = await fetch("/api/auth/verify", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
       },
       body: JSON.stringify({
-        phone: toEnDigits(payload.phone),
-        otp: toEnDigits(payload.otp),
+        phone: toEnglishDigits(payload.phone),
+        otp: toEnglishDigits(payload.otp),
       }),
     });
 
@@ -196,7 +243,7 @@ export async function apiVerifyOtp(payload: VerifyOtpPayload): Promise<{
         status: 422,
         message: data.message || "کد تأیید نامعتبر است.",
         user: null,
-        redirectUrl: "/dashboard",
+        redirectUrl: "/client",
         fieldErrors,
       };
     }
@@ -207,14 +254,12 @@ export async function apiVerifyOtp(payload: VerifyOtpPayload): Promise<{
         status: res.status,
         message: data?.message || "تأیید کد با خطا مواجه شد.",
         user: null,
-        redirectUrl: "/dashboard",
+        redirectUrl: "/client",
       };
     }
 
     const user: User = data.user;
-    const permissions: string[] = user?.permissions || [];
-    const roles = user?.roles || [];
-    const redirectUrl = getRedirectPath(permissions, roles);
+    const redirectUrl = getHomePath(user?.role);
 
     return {
       ok: true,
@@ -227,12 +272,9 @@ export async function apiVerifyOtp(payload: VerifyOtpPayload): Promise<{
     return {
       ok: false,
       status: 0,
-      message:
-        err instanceof TypeError
-          ? "عدم برقراری ارتباط با سرور. لطفاً اتصال اینترنت خود را بررسی کنید."
-          : (err as Error).message || "خطای ناشناخته رخ داد.",
+      message: "ارتباط با سرور برقرار نشد. لطفاً اتصال اینترنت خود را بررسی کنید.",
       user: null,
-      redirectUrl: "/dashboard",
+      redirectUrl: "/client",
     };
   }
 }

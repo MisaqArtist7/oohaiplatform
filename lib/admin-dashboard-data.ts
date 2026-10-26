@@ -9,7 +9,7 @@ import {
 import { BookingTimelineItem } from "@/features/bookings";
 import { initialClientBookings, mediaOwnerApplicationsStore } from "./client-dashboard-data";
 
-// نقش‌های موجود در سامانه OOHAI
+// نقش‌های موجود در سامانه OOHAI (تنها ۳ نقش مجاز مطابق سند)
 export const initialAdminRoles: AdminRole[] = [
   {
     id: "role-super-admin",
@@ -18,22 +18,6 @@ export const initialAdminRoles: AdminRole[] = [
     description: "دسترسی نامحدود به تمامی بخش‌ها، تنظیمات سامانه و کنترل اختیارات",
     color: "indigo",
     permissionsCount: 42,
-  },
-  {
-    id: "role-finance",
-    name: "مدیر مالی و اعتبارات (Finance)",
-    slug: "finance_manager",
-    description: "تایید فیش‌های واریزی، اعتبارسنجی چک‌های صیادی و صدور تاییدیه اکران",
-    color: "emerald",
-    permissionsCount: 18,
-  },
-  {
-    id: "role-operations",
-    name: "مدیر عملیات و اکران (Operations)",
-    slug: "operations_manager",
-    description: "قفل ۴۸ ساعته سازه‌ها، نظارت بر چاپخانه و نصب بنرها بر روی عرشه‌ها",
-    color: "blue",
-    permissionsCount: 24,
   },
   {
     id: "role-media-owner",
@@ -292,64 +276,38 @@ export const initialAdminUsers: AdminUser[] = [
   },
   {
     id: "usr-2",
-    name: "مریم صبوری",
-    phone: "09124567890",
-    email: "sabouri.finance@oohaiplatform.ir",
-    nationalCode: "0056789012",
-    department: "امور مالی و حسابداری",
-    roles: [initialAdminRoles[1]], // Finance
-    status: "active",
-    statusLabel: "فعال",
-    createdAt: "۱۴۰۲/۱۰/۱۵",
-    lastLogin: "امروز - ۰۹:۱۵",
-  },
-  {
-    id: "usr-3",
-    name: "احمد راد",
-    phone: "09127890123",
-    email: "rad.ops@oohaiplatform.ir",
-    nationalCode: "0078901234",
-    department: "عملیات و نظارت بر اکران",
-    roles: [initialAdminRoles[2]], // Operations
-    status: "active",
-    statusLabel: "فعال",
-    createdAt: "۱۴۰۲/۱۱/۰۱",
-    lastLogin: "دیروز - ۱۸:۰۰",
-  },
-  {
-    id: "usr-4",
     name: "کوروش صادقی (آوای رسانه)",
     phone: "09129998877",
     email: "sadeghi@avayeresaneh.com",
     nationalCode: "0034567890",
     department: "مالکان رسانه همکار",
-    roles: [initialAdminRoles[3]], // Media Owner
+    roles: [initialAdminRoles[1]], // Media Owner
     status: "active",
     statusLabel: "فعال",
     createdAt: "۱۴۰۳/۰۱/۱۰",
     lastLogin: "امروز - ۱۲:۰۰",
   },
   {
-    id: "usr-5",
+    id: "usr-3",
     name: "رضا کمالی (دیجی‌کالا)",
     phone: "09121112233",
     email: "kamali@digikala.com",
     nationalCode: "0098765432",
     department: "مشتریان تجاری",
-    roles: [initialAdminRoles[4]], // Client
+    roles: [initialAdminRoles[2]], // Client
     status: "active",
     statusLabel: "فعال",
     createdAt: "۱۴۰۳/۰۱/۱۵",
     lastLogin: "امروز - ۱۱:۴۵",
   },
   {
-    id: "usr-6",
+    id: "usr-4",
     name: "سارا نظری (اسنپ فود)",
     phone: "09123334455",
     email: "nazari@snappfood.ir",
     nationalCode: "0045678901",
     department: "مشتریان تجاری",
-    roles: [initialAdminRoles[4]], // Client
+    roles: [initialAdminRoles[2]], // Client
     status: "active",
     statusLabel: "فعال",
     createdAt: "۱۴۰۳/۰۱/۲۰",
@@ -452,7 +410,7 @@ export function issueAdminProforma(
   adminAuditLogsStore.unshift({
     id: `audit-${Date.now()}`,
     bookingId,
-    actor: "مدیر مالی (Finance)",
+    actor: "مدیر ارشد (Super Admin)",
     action: "صدور پیش‌فاکتور رسمی",
     previousStatus: "locked_for_contract",
     newStatus: "proforma_issued",
@@ -498,7 +456,7 @@ export function approveAdminPayment(
   adminAuditLogsStore.unshift({
     id: `audit-${Date.now()}`,
     bookingId,
-    actor: "مدیر مالی (Finance)",
+    actor: "مدیر ارشد (Super Admin)",
     action: "تایید نهایی سند پرداخت",
     previousStatus: "payment_submitted",
     newStatus: "approved",

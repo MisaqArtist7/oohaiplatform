@@ -1,7 +1,12 @@
-export interface UserRole {
-  id?: number | string;
-  name: string;
-}
+export type AuthRole = "client" | "media_owner" | "super_admin";
+
+export type AuthPermission =
+  | "client.view-bookings"
+  | "structure.view-own"
+  | "structure.create"
+  | "structure.update"
+  | "admin.manage-media-owner-requests"
+  | "admin.manage-user-roles";
 
 export interface User {
   id: number | string;
@@ -9,8 +14,8 @@ export interface User {
   name: string;
   phone: string;
   is_active?: boolean;
-  roles?: (string | UserRole)[];
-  permissions?: string[];
+  role: AuthRole;
+  permissions: AuthPermission[];
 }
 
 export interface RegisterPayload {
@@ -33,6 +38,7 @@ export interface AuthApiResponse<T = unknown> {
   data: T;
   next_step?: "request_otp" | "verify_otp" | string | null;
   errors?: Record<string, string[]>;
+  retry_after?: number;
 }
 
 export interface VerifyOtpSuccessData {

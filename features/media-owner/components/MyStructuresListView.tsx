@@ -45,20 +45,12 @@ export default function MyStructuresListView() {
 
   const user = sessionData?.user;
   const permissions: string[] = user?.permissions || [];
-  const roles: string[] = (user?.roles || []).map((r: string | { name?: string }) =>
-    typeof r === "string" ? r.toLowerCase() : (r?.name || "").toLowerCase()
-  );
+  const userRole = user?.role || "client";
 
   const hasPermission =
     permissions.includes("structure.view-own") ||
-    permissions.some((p) =>
-      ["superadmin", "super-admin", "media-owner", "media_owner", "structures.manage"].includes(
-        p.toLowerCase()
-      )
-    ) ||
-    roles.some((r) =>
-      ["superadmin", "super-admin", "media-owner", "media_owner", "admin"].includes(r)
-    );
+    userRole === "media_owner" ||
+    userRole === "super_admin";
 
   const {
     data: pageData,

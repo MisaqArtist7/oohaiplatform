@@ -3,9 +3,11 @@
 import React, { useState, useEffect, useCallback, useTransition } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
+import { z } from "zod";
 import {
   MapPin,
-  User,
+  User as UserIcon,
   Phone,
   ArrowRight,
   ArrowLeft,
@@ -26,13 +28,35 @@ import {
   maskPhone,
   toEnDigits,
   toFaDigits,
-  IRAN_PHONE_REGEX,
 } from "../api/auth.api";
+import { toEnglishDigits } from "@/shared/lib/digits";
 import { PinInput } from "./PinInput";
 import { useToast } from "@/shared/components/Toast";
+import { useSession, SESSION_QUERY_KEY } from "../hooks/use-session";
+import { getRedirectDestination } from "../lib/get-home-path";
 import type { AuthMode } from "../types";
 
-const RESEND_COOLDOWN_SECONDS = 120; // ۲ دقیقه شمارش معکوس ارسال مجدد
+const RESEND_COOLDOWN_SECONDS = 120; // ۲ دقیقه پیش‌فرض شمارش معکوس ارسال مجدد
+
+const phoneValidationSchema = z
+  .string()
+  .transform((val) => toEnglishDigits(val).trim())
+  .pipe(
+    z
+      .string()
+      .min(1, "شماره موبایل الزامی است.")
+      .regex(/^09\d{9}$/, "شماره موبایل باید ۱۱ رقم باشد و با 09 شروع شود (مثال: 09123456789).")
+  );
+
+const registerValidationSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1, "نام و نام خانوادگی الزامی است.")
+    .min(3, "نام باید حداقل ۳ کاراکتر باشد.")
+    .max(50, "نام نباید بیشتر از ۵۰ کاراکتر باشد."),
+  phone: phoneValidationSchema,
+});
 
 const features: {
   icon: LucideIcon;
@@ -68,31 +92,44 @@ export function AuthCard({ initialMode = "login" }: AuthCardProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const toast = useToast();
+  const queryClient = useQueryClient();
   const [isPending, startTransition] = useTransition();
+
+  const { user: currentSessionUser, isAuthenticated } = useSession();
+
+  // در صورتی که کاربر قبلاً لاگین کرده باشد، فوراً به مقصد نقشش ریدایرکت شود
+  useEffect(() => {
+    if (isAuthenticated && currentSessionUser) {
+      const nextParam = searchParams.get("next") || searchParams.get("return_to");
+      const targetUrl = getRedirectDestination(currentSessionUser.role, nextParam);
+      router.replace(targetUrl);
+    }
+  }, [isAuthenticated, currentSessionUser, router, searchParams]);
+
+  // دریافت شماره از query params (برای صفحه verify-otp) بدون استفاده از sessionStorage
+  const queryPhone = searchParams.get("phone") || "";
 
   // وضعیت تب فعال: 'login' | 'register' | 'verify'
   const [mode, setMode] = useState<AuthMode>(() => {
-    if (typeof window !== "undefined" && initialMode === "verify") {
-      const savedPhone = sessionStorage.getItem("auth_phone");
-      if (!savedPhone) return "login";
+    if (initialMode === "verify") {
       return "verify";
     }
     return initialMode;
   });
+
   const [previousMode, setPreviousMode] = useState<"login" | "register">("login");
 
   // فیلدهای فرم
-  const [phone, setPhone] = useState(() => {
-    if (typeof window !== "undefined") {
-      const savedPhone = sessionStorage.getItem("auth_phone");
-      if (savedPhone && IRAN_PHONE_REGEX.test(savedPhone)) {
-        return savedPhone;
-      }
-    }
-    return "";
-  });
+  const [phone, setPhone] = useState(queryPhone);
   const [name, setName] = useState("");
   const [otp, setOtp] = useState("");
+
+  // به‌روزرسانی شماره در صورت تغییر پارامتر URL
+  useEffect(() => {
+    if (queryPhone && !phone) {
+      setPhone(queryPhone);
+    }
+  }, [queryPhone, phone]);
 
   // خطاهای سرور و فیلدها
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -102,7 +139,7 @@ export function AuthCard({ initialMode = "login" }: AuthCardProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [isResending, setIsResending] = useState(false);
 
-  // تایمر معکوس برای ارسال مجدد (۱۲۰ ثانیه)
+  // تایمر معکوس برای ارسال مجدد (۱۲۰ ثانیه پیش‌فرض)
   const [cooldown, setCooldown] = useState(0);
 
   // شمارنده معکوس ارسال مجدد پیامک
@@ -125,51 +162,36 @@ export function AuthCard({ initialMode = "login" }: AuthCardProps) {
     setGeneralError(null);
   };
 
-  // تغییر مد و به‌روزرسانی تاریخچه مرورگر بدون رفرش
-  const switchMode = (newMode: AuthMode) => {
+  // تغییر مد و به‌روزرسانی تاریخچه مرورگر
+  const switchMode = (newMode: AuthMode, targetPhone?: string) => {
     setFieldErrors({});
     setGeneralError(null);
     setOtp("");
     setMode(newMode);
 
+    const nextParam = searchParams.get("next") || searchParams.get("return_to");
+    const nextQuery = nextParam ? `&next=${encodeURIComponent(nextParam)}` : "";
+
     if (newMode === "login") {
-      window.history.replaceState(null, "", "/login");
+      router.push(`/login${nextParam ? `?next=${encodeURIComponent(nextParam)}` : ""}`);
     } else if (newMode === "register") {
-      window.history.replaceState(null, "", "/register");
+      router.push(`/register${nextParam ? `?next=${encodeURIComponent(nextParam)}` : ""}`);
     } else if (newMode === "verify") {
-      window.history.replaceState(null, "", "/verify-otp");
+      const ph = targetPhone || phone;
+      router.push(`/verify-otp?phone=${encodeURIComponent(toEnglishDigits(ph))}${nextQuery}`);
     }
-  };
-
-  // اعتبارسنجی کلاینت برای شماره موبایل
-  const validatePhone = (num: string): string | null => {
-    const clean = toEnDigits(num);
-    if (!clean) return "شماره موبایل الزامی است.";
-    if (!IRAN_PHONE_REGEX.test(clean)) {
-      return "شماره موبایل باید ۱۱ رقم باشد و با 09 شروع شود (مثال: 09123456789).";
-    }
-    return null;
-  };
-
-  // اعتبارسنجی نام
-  const validateName = (val: string): string | null => {
-    const trimmed = val.trim();
-    if (!trimmed) return "نام و نام خانوادگی الزامی است.";
-    if (trimmed.length < 3) return "نام باید حداقل ۳ کاراکتر باشد.";
-    if (trimmed.length > 50) return "نام نباید بیشتر از ۵۰ کاراکتر باشد.";
-    return null;
   };
 
   // ۱. هندلر ورود (درخواست کد تایید)
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanPhone = toEnDigits(phone);
-    const phoneErr = validatePhone(cleanPhone);
 
-    if (phoneErr) {
-      setFieldErrors({ phone: phoneErr });
+    const parseResult = phoneValidationSchema.safeParse(phone);
+    if (!parseResult.success) {
+      setFieldErrors({ phone: parseResult.error.issues[0].message });
       return;
     }
+    const cleanPhone = parseResult.data;
 
     setIsLoading(true);
     setFieldErrors({});
@@ -180,6 +202,16 @@ export function AuthCard({ initialMode = "login" }: AuthCardProps) {
     setIsLoading(false);
 
     if (!result.ok) {
+      if (result.status === 429) {
+        const retrySecs = result.retryAfter && result.retryAfter > 0 ? result.retryAfter : RESEND_COOLDOWN_SECONDS;
+        setCooldown(retrySecs);
+        const msg = result.retryAfter
+          ? `تعداد درخواست‌ها زیاد است. لطفاً ${retrySecs} ثانیه دیگر مجدداً تلاش کنید.`
+          : "تعداد درخواست‌ها زیاد است، کمی بعد تلاش کنید.";
+        toast.error(msg);
+        setGeneralError(msg);
+        return;
+      }
       if (result.fieldErrors) {
         setFieldErrors(result.fieldErrors);
       }
@@ -188,36 +220,38 @@ export function AuthCard({ initialMode = "login" }: AuthCardProps) {
       return;
     }
 
-    // ذخیره شماره در سشن برای بازگشت و ذخیره بین مراحل
-    sessionStorage.setItem("auth_phone", cleanPhone);
     setPreviousMode("login");
     setCooldown(RESEND_COOLDOWN_SECONDS);
     toast.success(result.data?.message || "کد تأیید برای شما پیامک شد.");
-    switchMode("verify");
+    switchMode("verify", cleanPhone);
   };
 
   // ۲. هندلر ثبت‌نام (ثبت‌نام + ارسال خودکار OTP)
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanPhone = toEnDigits(phone);
-    const nameErr = validateName(name);
-    const phoneErr = validatePhone(cleanPhone);
 
-    const errors: Record<string, string> = {};
-    if (nameErr) errors.name = nameErr;
-    if (phoneErr) errors.phone = phoneErr;
-
-    if (Object.keys(errors).length > 0) {
+    const parseResult = registerValidationSchema.safeParse({ name, phone });
+    if (!parseResult.success) {
+      const errors: Record<string, string> = {};
+      parseResult.error.issues.forEach((issue) => {
+        const field = issue.path[0] as string;
+        if (field && !errors[field]) {
+          errors[field] = issue.message;
+        }
+      });
       setFieldErrors(errors);
       return;
     }
+
+    const cleanPhone = parseResult.data.phone;
+    const cleanName = parseResult.data.name;
 
     setIsLoading(true);
     setFieldErrors({});
     setGeneralError(null);
 
-    // ارسال درخواست ثبت‌نام
-    const regResult = await apiRegister({ name, phone: cleanPhone });
+    // ۱. ارسال درخواست ثبت‌نام
+    const regResult = await apiRegister({ name: cleanName, phone: cleanPhone });
 
     if (!regResult.ok) {
       setIsLoading(false);
@@ -229,35 +263,35 @@ export function AuthCard({ initialMode = "login" }: AuthCardProps) {
       return;
     }
 
-    // بلافاصله طبق مشخصات، اگر next_step === "request_otp" بود، کد درخواست داده می‌شود
-    if (regResult.data?.next_step === "request_otp" || regResult.ok) {
-      const otpResult = await apiRequestOtp({ phone: cleanPhone });
-      setIsLoading(false);
+    // ۲. طبق مشخصات، پاسخ موفق (۲۰۱) شامل next_step: "request_otp" است؛ بلافاصله خودکار کد درخواست می‌شود
+    const otpResult = await apiRequestOtp({ phone: cleanPhone });
+    setIsLoading(false);
 
-      sessionStorage.setItem("auth_phone", cleanPhone);
-      setPreviousMode("register");
-      setCooldown(RESEND_COOLDOWN_SECONDS);
-
-      if (otpResult.ok) {
-        toast.success("ثبت‌نام موفق! کد تأیید پیامک شد.");
-      } else {
-        toast.info("ثبت‌نام انجام شد؛ لطفاً کد تأیید را درخواست دهید.");
+    if (!otpResult.ok) {
+      if (otpResult.status === 429) {
+        const retrySecs = otpResult.retryAfter && otpResult.retryAfter > 0 ? otpResult.retryAfter : RESEND_COOLDOWN_SECONDS;
+        setCooldown(retrySecs);
       }
-      switchMode("verify");
-    } else {
-      setIsLoading(false);
-      switchMode("verify");
+      setPreviousMode("register");
+      switchMode("verify", cleanPhone);
+      toast.error(otpResult.errorMessage || "ثبت‌نام انجام شد؛ لطفاً ارسال مجدد کد را بزنید.");
+      return;
     }
+
+    setPreviousMode("register");
+    setCooldown(RESEND_COOLDOWN_SECONDS);
+    toast.success("ثبت‌نام موفق! کد تأیید پیامک شد.");
+    switchMode("verify", cleanPhone);
   };
 
-  // ۳. هندلر تایید کد یکبار مصرف
+  // ۳. هندلر تایید کد یکبار مصرف (PinInput ۶ رقمی)
   const handleVerifySubmit = useCallback(
     async (codeToVerify?: string) => {
-      const code = toEnDigits(codeToVerify || otp);
-      const cleanPhone = toEnDigits(phone);
+      const code = toEnglishDigits(codeToVerify || otp).trim();
+      const cleanPhone = toEnglishDigits(phone).trim();
 
-      if (!code || code.length < 5) {
-        setFieldErrors({ otp: "لطفاً کد تأیید ۵ رقمی را کامل وارد کنید." });
+      if (!code || code.length < 6) {
+        setFieldErrors({ otp: "لطفاً کد تأیید ۶ رقمی را کامل وارد کنید." });
         return;
       }
 
@@ -270,42 +304,56 @@ export function AuthCard({ initialMode = "login" }: AuthCardProps) {
       setIsLoading(false);
 
       if (!result.ok) {
-        if (result.fieldErrors) {
-          setFieldErrors(result.fieldErrors);
-        }
-        setGeneralError(result.message);
-        toast.error(result.message || "کد تأیید نادرست یا منقضی شده است.");
+        // خطای ۴۲۲ کد نادرست/منقضی: ورودی را خالی و پیام را زیر آن نمایش می‌دهیم
+        setOtp("");
+        const errorMsg = result.fieldErrors?.otp || result.message || "کد تأیید نادرست یا منقضی شده است.";
+        setFieldErrors({ otp: errorMsg });
+        setGeneralError(errorMsg);
+        toast.error(errorMsg);
         return;
       }
 
-      toast.success("ورود موفقیت‌آمیز بود! در حال انتقال...");
-      sessionStorage.removeItem("auth_phone");
+      toast.success("ورود با موفقیت انجام شد.");
 
-      // چک کردن بازگشت به صفحه‌ای که کاربر قصد بازدید داشت
-      const returnTo = searchParams.get("return_to");
-      const targetUrl = returnTo || result.redirectUrl || "/dashboard";
+      // رفرش سشن در React Query
+      queryClient.invalidateQueries({ queryKey: SESSION_QUERY_KEY });
+
+      // هدایت به پارامتر next (در صورت معتبر بودن و جلوگیری از open redirect) وگرنه مقصد جدول نقش
+      const nextParam = searchParams.get("next") || searchParams.get("return_to");
+      const targetUrl = getRedirectDestination(result.user?.role, nextParam);
 
       startTransition(() => {
         router.replace(targetUrl);
         router.refresh();
       });
     },
-    [otp, phone, router, searchParams, toast]
+    [otp, phone, router, searchParams, toast, queryClient]
   );
 
   // ۴. ارسال مجدد کد
   const handleResendOtp = async () => {
-    const cleanPhone = toEnDigits(phone);
+    const cleanPhone = toEnglishDigits(phone).trim();
     if (!cleanPhone || cooldown > 0 || isResending) return;
 
     setIsResending(true);
     setGeneralError(null);
+    setFieldErrors({});
 
     const result = await apiRequestOtp({ phone: cleanPhone });
 
     setIsResending(false);
 
     if (!result.ok) {
+      if (result.status === 429) {
+        const retrySecs = result.retryAfter && result.retryAfter > 0 ? result.retryAfter : RESEND_COOLDOWN_SECONDS;
+        setCooldown(retrySecs);
+        const msg = result.retryAfter
+          ? `تعداد درخواست‌ها زیاد است. لطفاً ${retrySecs} ثانیه دیگر تلاش کنید.`
+          : "تعداد درخواست‌ها زیاد است، کمی بعد تلاش کنید.";
+        toast.error(msg);
+        setGeneralError(msg);
+        return;
+      }
       toast.error(result.errorMessage || "ارسال مجدد پیامک ناموفق بود.");
       setGeneralError(result.errorMessage);
       return;
@@ -313,7 +361,7 @@ export function AuthCard({ initialMode = "login" }: AuthCardProps) {
 
     setCooldown(RESEND_COOLDOWN_SECONDS);
     setOtp("");
-    toast.success("کد تأیید جدید با موفقیت ارسال شد.");
+    toast.success(result.data?.message || "کد تأیید جدید با موفقیت ارسال شد.");
   };
 
   // فرمت دقیقه و ثانیه (مثلاً ۰۱:۴۵)
@@ -410,7 +458,7 @@ export function AuthCard({ initialMode = "login" }: AuthCardProps) {
                     تأیید شماره و ورود
                   </h1>
                   <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
-                    کد ۵ رقمی ارسال‌شده به شماره همراه زیر را وارد نمایید.
+                    کد ۶ رقمی ارسال‌شده به شماره همراه زیر را وارد نمایید.
                   </p>
                 </>
               )}
@@ -551,7 +599,7 @@ export function AuthCard({ initialMode = "login" }: AuthCardProps) {
                     </span>
                   </label>
                   <div className="relative">
-                    <User className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <UserIcon className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <input
                       id="reg-name"
                       type="text"
@@ -687,14 +735,14 @@ export function AuthCard({ initialMode = "login" }: AuthCardProps) {
                   </button>
                 </div>
 
-                {/* ورودی پین سگمنتی (Segmented PIN Input) */}
+                {/* ورودی پین سگمنتی ۶ رقمی (Segmented PIN Input) */}
                 <div className="flex flex-col gap-2 text-center">
                   <label className="text-xs sm:text-sm font-semibold text-foreground">
-                    کد ۵ رقمی تأیید را وارد کنید
+                    کد ۶ رقمی تأیید را وارد کنید
                   </label>
 
                   <PinInput
-                    length={5}
+                    length={6}
                     value={otp}
                     onChange={(val) => {
                       clearFieldError("otp");
@@ -723,7 +771,7 @@ export function AuthCard({ initialMode = "login" }: AuthCardProps) {
                 <button
                   type="button"
                   onClick={() => handleVerifySubmit()}
-                  disabled={isLoading || isPending || otp.length < 5}
+                  disabled={isLoading || isPending || otp.length < 6}
                   aria-busy={isLoading || isPending}
                   className="w-full cursor-pointer bg-linear-to-r from-primary to-indigo-600 hover:from-primary/95 hover:to-indigo-500 text-primary-foreground font-semibold py-3.5 px-4 rounded-xl transition-all duration-200 shadow-lg shadow-primary/25 enabled:active:scale-[0.985] disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none flex items-center justify-center gap-2 group"
                 >

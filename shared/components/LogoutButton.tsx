@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { LogOut, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -9,7 +11,6 @@ export interface LogoutButtonProps {
   variant?: "sidebar" | "icon" | "header" | "dropdown";
   showText?: boolean;
   label?: string;
-  redirectTo?: string;
 }
 
 export default function LogoutButton({
@@ -17,13 +18,15 @@ export default function LogoutButton({
   variant = "sidebar",
   showText = true,
   label = "خروج از حساب کاربری",
-  redirectTo = "/login",
 }: LogoutButtonProps) {
+  const router = useRouter();
+  const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
 
   const handleLogout = async () => {
     if (loading) return;
     setLoading(true);
+
     try {
       await fetch("/api/auth/logout", {
         method: "POST",
@@ -31,13 +34,16 @@ export default function LogoutButton({
       });
       toast.success("با موفقیت از حساب کاربری خارج شدید.");
     } catch {
-      // حتی اگر درخواست شبکه با خطا مواجه شد، به خروج ادامه می‌دهیم
+      // ادامه خروج حتی در صورت خطای شبکه
     } finally {
-      // استفاده از window.location.href برای پاکسازی کامل حافظه و رفرش وضعیت احراز هویت
-      window.location.href = redirectTo;
+      queryClient.clear();
+      setLoading(false);
+      router.replace("/");
+      router.refresh();
     }
   };
 
+  // ۱. سبک آیکونی
   if (variant === "icon") {
     return (
       <button
@@ -57,6 +63,7 @@ export default function LogoutButton({
     );
   }
 
+  // ۲. سبک هدر
   if (variant === "header") {
     return (
       <button
@@ -77,7 +84,7 @@ export default function LogoutButton({
     );
   }
 
-  // پیش‌فرض: سبک مناسب سایدبارها
+  // ۳. سبک پیش‌فرض (سایدبار / منو)
   return (
     <button
       type="button"

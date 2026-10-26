@@ -1,16 +1,6 @@
-// TODO: جایگزینی با GET /api/v1/auth/me پس از آماده شدن بک‌اند
-
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-
-interface SessionUser {
-  id?: string | number;
-  uuid?: string;
-  name?: string;
-  role?: string;
-  roles?: string[];
-  permissions?: string[];
-}
+import type { User, AuthRole, AuthPermission } from "@/features/auth/types";
 
 export async function GET() {
   const store = await cookies();
@@ -22,7 +12,6 @@ export async function GET() {
     store.get("user_info")?.value ||
     store.get("user")?.value;
 
-  // در صورت نبود توکن یا کوکی کاربر، وضعیت ۴۰۱ Unauthorized بازگردانده می‌شود
   if (!token || !userInfoRaw) {
     return NextResponse.json(
       { authenticated: false, message: "نشست کاربر نامعتبر است یا منقضی شده است." },
@@ -30,32 +19,36 @@ export async function GET() {
     );
   }
 
-  let user: SessionUser | null = null;
   try {
-    user = JSON.parse(userInfoRaw);
+    const rawUser = JSON.parse(userInfoRaw);
+    if (!rawUser) {
+      return NextResponse.json(
+        { authenticated: false, message: "اطلاعات نشست نامعتبر است." },
+        { status: 401 }
+      );
+    }
+
+    const rawRole = rawUser.role || (Array.isArray(rawUser.roles) ? rawUser.roles[0] : "client");
+    const roleSlug = (typeof rawRole === "string" ? rawRole : rawRole?.slug || rawRole?.name || "client") as AuthRole;
+
+    const user: User = {
+      id: rawUser.id,
+      uuid: rawUser.uuid,
+      name: rawUser.name,
+      phone: rawUser.phone,
+      is_active: rawUser.is_active ?? true,
+      role: ["client", "media_owner", "super_admin"].includes(roleSlug) ? roleSlug : "client",
+      permissions: Array.isArray(rawUser.permissions) ? (rawUser.permissions as AuthPermission[]) : [],
+    };
+
+    return NextResponse.json({
+      authenticated: true,
+      user,
+    });
   } catch {
     return NextResponse.json(
       { authenticated: false, message: "اطلاعات نشست نامعتبر است." },
       { status: 401 }
     );
   }
-
-  if (!user) {
-    return NextResponse.json(
-      { authenticated: false, message: "کاربر یافت نشد." },
-      { status: 401 }
-    );
-  }
-
-  return NextResponse.json({
-    authenticated: true,
-    user: {
-      id: user.id,
-      uuid: user.uuid,
-      name: user.name,
-      role: user.role,
-      roles: user.roles || (user.role ? [user.role] : []),
-      permissions: user.permissions || [],
-    },
-  });
 }

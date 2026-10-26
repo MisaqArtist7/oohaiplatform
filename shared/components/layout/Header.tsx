@@ -5,64 +5,16 @@ import Link from "next/link";
 import { MapPin, Sparkles, User, Menu, X, Building2, ShieldAlert, CalendarCheck } from "lucide-react";
 import LogoutButton from "@/shared/components/LogoutButton";
 
-interface UserSession {
-  id?: number | string;
-  name?: string;
-  phone?: string;
-  roles?: (string | { name?: string })[];
-  permissions?: string[];
-}
+import { useSession } from "@/features/auth/hooks/use-session";
+import { getHomePath } from "@/features/auth/lib/get-home-path";
 
 export default function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [user, setUser] = useState<UserSession | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { user, isLoading: loading } = useSession();
 
-  useEffect(() => {
-    let isMounted = true;
-    fetch("/api/auth/session")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (isMounted && data?.authenticated && data?.user) {
-          setUser(data.user);
-        }
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (isMounted) setLoading(false);
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-  
-  // بررسی دسترسی سوپر ادمین
-  const userPermissions = (user?.permissions && Array.isArray(user.permissions)) ? user.permissions : [];
-  const userRoles = (user?.roles && Array.isArray(user.roles)) ? user.roles : [];
-  const roleNames = userRoles.map((r) => (typeof r === "string" ? r : r?.name)).filter(Boolean);
-
-  const isSuperAdmin =
-    userPermissions.some((p: string) =>
-      ["superadmin", "super-admin", "super_admin", "dashboard.superadmin"].includes(p.toLowerCase())
-    ) ||
-    roleNames.some((r) =>
-      ["superadmin", "super-admin", "super_admin"].includes(r?.toLowerCase() ?? "")
-    );
-
-  const isMediaOwner =
-    userPermissions.some((p: string) =>
-      ["media-owner", "media_owner", "mediaowner", "dashboard.media-owner", "dashboard.media_owner", "structures.manage"].includes(p.toLowerCase())
-    ) ||
-    roleNames.some((r) =>
-      ["media-owner", "media_owner", "mediaowner"].includes(r?.toLowerCase() ?? "")
-    );
-
-  const dashboardUrl = isSuperAdmin
-    ? "/dashboard/superadmin"
-    : isMediaOwner
-    ? "/media-owner/structures"
-    : "/dashboard";
+  const isSuperAdmin = user?.role === "super_admin";
+  const isMediaOwner = user?.role === "media_owner";
+  const dashboardUrl = getHomePath(user?.role);
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border bg-background/85 backdrop-blur-md">

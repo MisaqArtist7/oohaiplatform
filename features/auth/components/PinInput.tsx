@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useRef, useEffect } from "react";
-import { toEnDigits } from "../api/auth.api";
+import { toEnglishDigits } from "@/shared/lib/digits";
 
 export interface PinInputProps {
   length?: number;
@@ -14,7 +14,7 @@ export interface PinInputProps {
 }
 
 export function PinInput({
-  length = 5,
+  length = 6,
   value,
   onChange,
   onComplete,
@@ -33,6 +33,13 @@ export function PinInput({
     }
   }, [autoFocus, disabled]);
 
+  // هنگام پاک شدن مقدار (مثلاً پس از خطای کد نادرست/منقضی)، فوکوس خودکار روی اولین خانه برمی‌گردد
+  useEffect(() => {
+    if (!value && inputRefs.current[0] && !disabled) {
+      inputRefs.current[0].focus();
+    }
+  }, [value, disabled]);
+
   const setPinValue = (newDigits: string[]) => {
     const combined = newDigits.join("");
     onChange(combined);
@@ -46,7 +53,7 @@ export function PinInput({
     e: React.ChangeEvent<HTMLInputElement>
   ) => {
     const rawVal = e.target.value;
-    const cleanDigits = toEnDigits(rawVal).replace(/\D/g, "");
+    const cleanDigits = toEnglishDigits(rawVal).replace(/\D/g, "");
 
     if (!cleanDigits) {
       const next = [...digits];
@@ -99,7 +106,7 @@ export function PinInput({
   };
 
   const handlePastedContent = (pasted: string, fromIndex = 0) => {
-    const clean = toEnDigits(pasted).replace(/\D/g, "");
+    const clean = toEnglishDigits(pasted).replace(/\D/g, "");
     if (!clean) return;
 
     const next = [...digits];
