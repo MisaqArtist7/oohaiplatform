@@ -16,7 +16,7 @@ export async function POST() {
   if (token) {
     try {
       const rawBackend = getBackendUrl().replace(/\/+$/, "");
-      const cleanBackend = rawBackend.replace(/\/api\/?$/, "");
+      const cleanBackend = rawBackend.replace(/\/api(\/v\d+)?\/?$/, "");
       await fetch(`${cleanBackend}/api/v1/auth/logout`, {
         method: "POST",
         headers: {

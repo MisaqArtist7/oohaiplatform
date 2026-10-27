@@ -217,7 +217,7 @@ export async function apiVerifyOtp(payload: VerifyOtpPayload): Promise<{
   fieldErrors?: Record<string, string>;
 }> {
   try {
-    const res = await fetch("/api/auth/verify", {
+    const res = await fetch("/api/v1/otp/verify", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

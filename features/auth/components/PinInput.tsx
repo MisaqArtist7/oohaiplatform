@@ -14,7 +14,7 @@ export interface PinInputProps {
 }
 
 export function PinInput({
-  length = 6,
+  length = 5,
   value,
   onChange,
   onComplete,

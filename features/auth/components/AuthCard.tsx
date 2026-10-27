@@ -276,14 +276,14 @@ export function AuthCard({ initialMode = "login" }: AuthCardProps) {
     switchMode("verify", cleanPhone);
   };
 
-  // ۳. هندلر تایید کد یکبار مصرف (PinInput ۶ رقمی)
+  // ۳. هندلر تایید کد یکبار مصرف (PinInput ۵ رقمی)
   const handleVerifySubmit = useCallback(
     async (codeToVerify?: string) => {
       const code = toEnglishDigits(codeToVerify || otp).trim();
       const cleanPhone = toEnglishDigits(phone).trim();
 
-      if (!code || code.length < 6) {
-        setFieldErrors({ otp: "لطفاً کد تأیید ۶ رقمی را کامل وارد کنید." });
+      if (!code || code.length < 5) {
+        setFieldErrors({ otp: "لطفاً کد تأیید ۵ رقمی را کامل وارد کنید." });
         return;
       }
 
@@ -450,7 +450,7 @@ export function AuthCard({ initialMode = "login" }: AuthCardProps) {
                     تأیید شماره و ورود
                   </h1>
                   <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
-                    کد ۶ رقمی ارسال‌شده به شماره همراه زیر را وارد نمایید.
+                    کد ۵ رقمی ارسال‌شده به شماره همراه زیر را وارد نمایید.
                   </p>
                 </>
               )}
@@ -727,14 +727,14 @@ export function AuthCard({ initialMode = "login" }: AuthCardProps) {
                   </button>
                 </div>
 
-                {/* ورودی پین سگمنتی ۶ رقمی (Segmented PIN Input) */}
+                {/* ورودی پین سگمنتی ۵ رقمی (Segmented PIN Input) */}
                 <div className="flex flex-col gap-2 text-center">
                   <label className="text-xs sm:text-sm font-semibold text-foreground">
-                    کد ۶ رقمی تأیید را وارد کنید
+                    کد ۵ رقمی تأیید را وارد کنید
                   </label>
 
                   <PinInput
-                    length={6}
+                    length={5}
                     value={otp}
                     onChange={(val) => {
                       clearFieldError("otp");
@@ -763,7 +763,7 @@ export function AuthCard({ initialMode = "login" }: AuthCardProps) {
                 <button
                   type="button"
                   onClick={() => handleVerifySubmit()}
-                  disabled={isLoading || isPending || otp.length < 6}
+                  disabled={isLoading || isPending || otp.length < 5}
                   aria-busy={isLoading || isPending}
                   className="w-full cursor-pointer bg-linear-to-r from-primary to-indigo-600 hover:from-primary/95 hover:to-indigo-500 text-primary-foreground font-semibold py-3.5 px-4 rounded-xl transition-all duration-200 shadow-lg shadow-primary/25 enabled:active:scale-[0.985] disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none flex items-center justify-center gap-2 group"
                 >

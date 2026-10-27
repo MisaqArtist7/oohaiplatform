@@ -18,14 +18,14 @@ export const serverEnvSchema = z.object({
  */
 export const clientEnvSchema = z.object({
   NEXT_PUBLIC_REVERB_APP_KEY: z.string().default("platform-reverb-key"),
-  NEXT_PUBLIC_REVERB_HOST: z.string().default("localhost"),
-  NEXT_PUBLIC_REVERB_PORT: z.coerce.number().default(8080),
+  NEXT_PUBLIC_REVERB_HOST: z.string().default("oohaiplatform.ir"),
+  NEXT_PUBLIC_REVERB_PORT: z.coerce.number().default(443),
   NEXT_PUBLIC_REVERB_FORCE_TLS: z
     .enum(["true", "false"])
     .or(z.boolean())
     .optional()
     .transform((val) => val === true || val === "true")
-    .default(false),
+    .default(true),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
@@ -41,7 +41,10 @@ export function getBackendUrl(): string {
     throw new Error("خطای امنیتی: متغیر BACKEND_URL فقط در محیط سرور در دسترس است و نباید به کلاینت نشت کند.");
   }
 
-  const rawValue = process.env.BACKEND_URL || "http://localhost:8085";
+  const rawValue =
+    process.env.BACKEND_URL ||
+    process.env.NEXT_PUBLIC_API_URL ||
+    "https://oohaiplatform.ir";
 
   const result = serverEnvSchema.safeParse({ BACKEND_URL: rawValue });
   if (!result.success) {

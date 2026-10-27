@@ -27,7 +27,7 @@ async function handleProxy(request: NextRequest, segmentData: RouteParams): Prom
   let targetUrl: string;
   try {
     const rawBackend = getBackendUrl().replace(/\/+$/, "");
-    const cleanBackend = rawBackend.replace(/\/api\/?$/, "");
+    const cleanBackend = rawBackend.replace(/\/api(\/v\d+)?\/?$/, "");
     const { search } = new URL(request.url);
     const subPath = pathSegments.join("/");
     targetUrl = `${cleanBackend}/api/${subPath}${search}`;

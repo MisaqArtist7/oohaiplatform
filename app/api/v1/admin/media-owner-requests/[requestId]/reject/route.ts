@@ -28,7 +28,6 @@ export async function POST(
         process.env.NEXT_PUBLIC_API_URL
           ? `${process.env.NEXT_PUBLIC_API_URL}/admin/media-owner-requests/${requestId}/reject`
           : null,
-        `http://localhost/api/v1/admin/media-owner-requests/${requestId}/reject`,
         `https://oohaiplatform.ir/api/v1/admin/media-owner-requests/${requestId}/reject`,
       ].filter(Boolean) as string[];
 

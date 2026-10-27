@@ -144,7 +144,7 @@
 | :--- | :--- | :--- | :---: | :--- | :---: | :--- |
 | ۱ | `/api/auth/logout` | `POST` | **بله** | `${API}/auth/logout` | **خیر** | در صورت قطعی کوکی‌ها به هر حال پاک می‌شوند |
 | ۲ | `/api/auth/session` | `GET` | **خیر** | *هیچ‌کدام* | **بله** | خواندن از کوکی و تطبیق با `adminMediaOwnerRequestsStore` و `mediaOwnerApplicationsStore` |
-| ۳ | `/api/auth/verify` | `POST` | **بله** | `${API}/otp/verify` | **خیر** | مستقیماً پاسخ خطای سرور را فوروارد می‌کند |
+| ۳ | `/api/v1/otp/verify` | `POST` | **بله** | `${API}/otp/verify` | **خیر** | مستقیماً پاسخ خطای سرور را فوروارد می‌کند |
 | ۴ | `/api/v1/locations` | `GET` | **بله** | `${API}/locations` | **بله** | در صورت خطا: آرایه `defaultLocations` (۳۱ استان) |
 | ۵ | `/api/v1/structures` | `GET`, `POST` | **خیر** | *هیچ‌کدام* | **بله** | خواندن و نوشتن مستقیم روی `structuresStore` |
 | ۶ | `/api/v1/structures/[structureId]` | `GET`, `PUT` | **خیر** | *هیچ‌کدام* | **بله** | خواندن و تغییر مستقیم در `structuresStore` |
@@ -185,7 +185,7 @@
 
 ### ۳.۱. محل و ویژگی‌های دقیق ذخیره‌سازی توکن
 1. **توکن احراز هویت Sanctum (`token`):**
-   * **محل ذخیره:** کوکی HTTP در پاسخ به درخواست موفق `POST /api/auth/verify` (خطوط ۵۳ الی ۷۶ فایل `app/api/auth/verify/route.ts`).
+   * **محل ذخیره:** کوکی HTTP در پاسخ به درخواست موفق `POST /api/v1/otp/verify` (فایل `app/api/v1/otp/verify/route.ts`).
    * **ویژگی‌های امنیتی کوکی:**
      * `httpOnly: true` (غیرقابل دسترس توسط جاوااسکریپت سمت کلاینت و کدهای XSS).
      * `secure: process.env.NODE_ENV === "production"` (در محیط توسعه روی پورت لوکال بدون HTTPS کار می‌کند؛ در پروداکشن الزاما از طریق SSL/HTTPS ارسال می‌شود).
