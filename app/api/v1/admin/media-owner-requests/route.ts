@@ -3,6 +3,8 @@ import { cookies } from "next/headers";
 import { adminMediaOwnerRequestsStore } from "@/lib/admin-dashboard-data";
 
 export async function GET() {
+
+
   try {
     const store = await cookies();
     const token = store.get("token")?.value;

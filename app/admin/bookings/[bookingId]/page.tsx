@@ -1,12 +1,6 @@
 import { Metadata } from "next";
 import { AdminBookingActionCenterView } from "@/features/admin";
-import { adminBookingsStore } from "@/lib/admin-dashboard-data";
 
-export async function generateStaticParams() {
-  return adminBookingsStore.map((b) => ({
-    bookingId: b.id,
-  }));
-}
 
 interface PageProps {
   params: Promise<{

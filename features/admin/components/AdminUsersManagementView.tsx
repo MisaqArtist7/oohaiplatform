@@ -1,522 +1,706 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import Link from "next/link";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import {
   Users,
-  ShieldCheck,
   Search,
   RefreshCw,
-  CheckCircle2,
   AlertCircle,
   X,
   Plus,
   Trash2,
-  KeyRound,
+  ShieldAlert,
+  Loader2,
+  ExternalLink,
+  ChevronRight,
+  ChevronLeft,
+  ShieldCheck,
+  UserCheck,
 } from "lucide-react";
-import { AdminRole, AdminUser } from "../types";
+import { toast } from "sonner";
+import { useSession } from "@/features/auth/hooks/use-session";
+import { Can } from "@/features/auth/components/Can";
 import {
-  getAdminUsers,
-  assignRoleToUserApi,
-  removeRoleFromUserApi,
-} from "../api/admin.api";
+  useAdminUsersQuery,
+  useAdminUserDetailQuery,
+  useUserRolesQuery,
+  useAssignRoleMutation,
+  useRemoveRoleMutation,
+} from "../hooks/useAdmin";
+import {
+  USER_ROLE_LABELS,
+  USER_ROLES_LIST,
+  type AdminUser,
+  type UserRoleValue,
+} from "../types";
+import { toPersianDigits } from "@/shared/lib/digits";
+import { ApiError } from "@/shared/lib/errors";
 
 export default function AdminUsersManagementView() {
-  const [users, setUsers] = useState<AdminUser[]>([]);
-  const [roles, setRoles] = useState<AdminRole[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [roleFilter, setRoleFilter] = useState("all");
-  const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
-  const [actionLoading, setActionLoading] = useState(false);
-  const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
-
-  // واکشی کاربران و نقش‌ها
-  const loadUsers = async () => {
-    setLoading(true);
-    try {
-      const res = await getAdminUsers(search || undefined);
-      if (res.success && res.data) {
-        setUsers(res.data);
-        if (res.roles) setRoles(res.roles);
+  return (
+    <Can
+      perm="admin.manage-user-roles"
+      fallback={
+        <div className="py-24 px-6 text-center bg-white rounded-2xl border border-slate-200">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 text-amber-600 mb-3">
+            <ShieldAlert className="h-7 w-7" />
+          </div>
+          <h3 className="text-base font-bold text-slate-900 mb-1">
+            عدم دسترسی به بخش کاربران
+          </h3>
+          <p className="text-xs text-slate-500 max-w-sm mx-auto">
+            حساب کاربری شما مجوز لازم برای مدیریت کاربران و تخصیص نقش‌ها (admin.manage-user-roles) را دارا نمی‌باشد.
+          </p>
+        </div>
       }
-    } catch (err) {
-      console.error("Error loading users:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
+    >
+      <AdminUsersContent />
+    </Can>
+  );
+}
+
+function AdminUsersContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const { user: currentSessionUser } = useSession();
+
+  const searchParam = searchParams.get("search") || "";
+  const pageParam = parseInt(searchParams.get("page") || "1", 10);
+  const perPageParam = parseInt(searchParams.get("per_page") || "15", 10);
+
+  // استیت جستجو با Debounce ۴۰۰ میلی‌ثانیه
+  const [searchInput, setSearchInput] = useState(searchParam);
 
   useEffect(() => {
-    let isMounted = true;
-    getAdminUsers().then((res) => {
-      if (isMounted && res.success && res.data) {
-        setUsers(res.data);
-        if (res.roles) setRoles(res.roles);
-      }
-    }).catch((err) => {
-      console.error("Error loading users:", err);
-    }).finally(() => {
-      if (isMounted) setLoading(false);
-    });
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    loadUsers();
-  };
-
-  // اختصاص نقش به کاربر
-  const handleAssignRole = async (userId: string, roleSlug: string) => {
-    setActionLoading(true);
-    try {
-      const res = await assignRoleToUserApi(userId, roleSlug);
-      if (res.success && res.user) {
-        setFeedback({ type: "success", message: res.message || "نقش با موفقیت به کاربر اختصاص یافت." });
-        setUsers((prev) => prev.map((u) => (u.id === userId ? res.user! : u)));
-        if (selectedUser?.id === userId) {
-          setSelectedUser(res.user);
-        }
+    const handler = setTimeout(() => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (searchInput.trim()) {
+        params.set("search", searchInput.trim());
       } else {
-        setFeedback({ type: "error", message: res.message || "خطا در انتساب نقش." });
+        params.delete("search");
       }
-    } catch {
-      setFeedback({ type: "error", message: "خطای ناشناخته در ارتباط با سرور." });
-    } finally {
-      setActionLoading(false);
-    }
-  };
+      params.delete("page"); // بازگشت به صفحه اول در جستجوی جدید
+      router.push(`${pathname}?${params.toString()}`);
+    }, 400);
 
-  // حذف نقش از کاربر
-  const handleRemoveRole = async (userId: string, roleSlug: string) => {
-    setActionLoading(true);
-    try {
-      const res = await removeRoleFromUserApi(userId, roleSlug);
-      if (res.success && res.user) {
-        setFeedback({ type: "success", message: res.message || "نقش با موفقیت از کاربر سلب گردید." });
-        setUsers((prev) => prev.map((u) => (u.id === userId ? res.user! : u)));
-        if (selectedUser?.id === userId) {
-          setSelectedUser(res.user);
-        }
-      } else {
-        setFeedback({ type: "error", message: res.message || "خطا در حذف نقش." });
-      }
-    } catch {
-      setFeedback({ type: "error", message: "خطای ناشناخته در ارتباط با سرور." });
-    } finally {
-      setActionLoading(false);
-    }
-  };
+    return () => clearTimeout(handler);
+  }, [searchInput, pathname, router, searchParams]);
 
-  // فیلتر کلاینت ساید نقش‌ها
-  const filteredUsers = users.filter((u) => {
-    if (roleFilter !== "all" && !u.roles.some((r) => r.slug === roleFilter)) {
-      return false;
-    }
-    return true;
-  });
+  const queryParams = useMemo(
+    () => ({
+      search: searchParam || undefined,
+      page: pageParam > 1 ? pageParam : undefined,
+      per_page: perPageParam !== 15 ? perPageParam : undefined,
+    }),
+    [searchParam, pageParam, perPageParam]
+  );
 
-  // رنگ نقش‌ها
-  const getRoleBadgeColor = (color: string) => {
-    switch (color) {
-      case "indigo":
-        return "bg-indigo-50 text-indigo-700 border-indigo-200";
-      case "emerald":
-        return "bg-emerald-50 text-emerald-700 border-emerald-200";
-      case "blue":
-        return "bg-blue-50 text-blue-700 border-blue-200";
-      case "amber":
-        return "bg-amber-50 text-amber-700 border-amber-200";
-      default:
-        return "bg-slate-100 text-slate-700 border-slate-200";
+  const { data: pageData, isLoading, isError, error, refetch } = useAdminUsersQuery(queryParams);
+
+  const users: AdminUser[] = pageData?.data || [];
+  const meta = pageData?.meta;
+
+  // کاربر انتخاب‌شده جهت باز شدن دیالوگ جزییات و نقش‌ها
+  const [selectedUserUuid, setSelectedUserUuid] = useState<string | null>(null);
+
+  // دیالوگ تأیید حذف نقش
+  const [roleToDelete, setRoleToDelete] = useState<{ uuid: string; role: UserRoleValue; label: string } | null>(null);
+
+  const handlePageChange = (newPage: number) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (newPage > 1) {
+      params.set("page", String(newPage));
+    } else {
+      params.delete("page");
     }
+    router.push(`${pathname}?${params.toString()}`);
   };
 
   return (
     <div className="space-y-6">
-      {/* پیام فیدبک */}
-      {feedback && (
-        <div
-          className={`flex items-center justify-between rounded-2xl p-4 text-xs font-bold border animate-in fade-in ${
-            feedback.type === "success"
-              ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-              : "bg-rose-50 text-rose-800 border-rose-200"
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            {feedback.type === "success" ? (
-              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-            ) : (
-              <AlertCircle className="h-4 w-4 text-rose-600" />
+      {/* هدر بخش مدیریت کاربران */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200">
+        <div>
+          <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+            مدیریت کاربران و نقش‌ها
+          </h2>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1">
+            مشاهده اطلاعات کاربران، انتساب و سلب نقش‌های ۳ گانه سیستم (مشتری، مالک رسانه، مدیر ارشد)
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => refetch()}
+            disabled={isLoading}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-50 disabled:opacity-50 transition-colors cursor-pointer shadow-2xs"
+            title="تازه‌سازی لیست کاربران"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />
+            <span>به‌روزرسانی</span>
+          </button>
+        </div>
+      </div>
+
+      {/* نوار جستجوی زنده با debounce */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
+        <div className="relative max-w-md">
+          <input
+            type="text"
+            placeholder="جستجوی نام یا شماره همراه کاربر..."
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            className="w-full h-10 pr-9 pl-4 rounded-xl border border-slate-200 bg-slate-50 text-xs text-slate-800 placeholder:text-slate-400 focus:bg-white focus:border-indigo-500 focus:outline-none transition-colors"
+          />
+          <Search className="absolute right-3 top-3 h-4 w-4 text-slate-400 pointer-events-none" />
+          {searchInput && (
+            <button
+              type="button"
+              onClick={() => setSearchInput("")}
+              className="absolute left-3 top-3 text-slate-400 hover:text-slate-600"
+              title="پاک کردن جستجو"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* جدول کاربران */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+        {isLoading ? (
+          <div className="py-24 flex flex-col items-center justify-center gap-3">
+            <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
+            <p className="text-xs font-semibold text-slate-500">
+              در حال دریافت لیست کاربران از سرور...
+            </p>
+          </div>
+        ) : isError ? (
+          <div className="py-16 px-6 text-center">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-rose-50 text-rose-600 mb-3">
+              <AlertCircle className="h-6 w-6" />
+            </div>
+            <h3 className="text-sm font-bold text-slate-900 mb-1">
+              خطا در دریافت لیست کاربران
+            </h3>
+            <p className="text-xs text-slate-500 max-w-md mx-auto mb-4">
+              {error instanceof Error ? error.message : "امکان برقراری ارتباط با سرویس کاربران وجود ندارد."}
+            </p>
+            <button
+              type="button"
+              onClick={() => refetch()}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-colors cursor-pointer"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              <span>تلاش مجدد</span>
+            </button>
+          </div>
+        ) : users.length === 0 ? (
+          <div className="py-20 px-6 text-center">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-50 text-slate-400 mb-3">
+              <Users className="h-7 w-7" />
+            </div>
+            <h3 className="text-sm font-bold text-slate-900 mb-1">
+              کاربری یافت نشد
+            </h3>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+              {searchParam
+                ? `برای عبارت «${searchParam}» هیچ کاربری پیدا نشد.`
+                : "هیچ کاربری در سیستم ثبت نشده است."}
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-right text-xs">
+                <thead className="bg-slate-50/80 text-slate-500 font-bold border-b border-slate-200">
+                  <tr>
+                    <th className="py-3.5 px-4">شناسه</th>
+                    <th className="py-3.5 px-4">نام و نام خانوادگی</th>
+                    <th className="py-3.5 px-4">شماره همراه</th>
+                    <th className="py-3.5 px-4">وضعیت حساب</th>
+                    <th className="py-3.5 px-4">نقش‌ها</th>
+                    <th className="py-3.5 px-4 text-center">عملیات</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {users.map((user) => {
+                    // استخراج نقش‌ها از پاسخ لیست
+                    const rolesDisplay: string[] = [];
+                    if (user.role) {
+                      rolesDisplay.push(
+                        USER_ROLE_LABELS[user.role as UserRoleValue] || String(user.role)
+                      );
+                    }
+                    if (Array.isArray(user.roles)) {
+                      for (const r of user.roles) {
+                        const slug = typeof r === "string" ? r : r.slug || r.name || "";
+                        const label = USER_ROLE_LABELS[slug as UserRoleValue] || slug;
+                        if (label && !rolesDisplay.includes(label)) {
+                          rolesDisplay.push(label);
+                        }
+                      }
+                    }
+
+                    return (
+                      <tr
+                        key={user.uuid || user.id}
+                        onClick={() => setSelectedUserUuid(user.uuid || String(user.id))}
+                        className="hover:bg-slate-50/70 transition-colors cursor-pointer group"
+                      >
+                        {/* شناسه */}
+                        <td className="py-3.5 px-4 font-mono font-bold text-slate-500">
+                          #{toPersianDigits(user.id)}
+                        </td>
+
+                        {/* نام */}
+                        <td className="py-3.5 px-4">
+                          <span className="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">
+                            {user.name || "—"}
+                          </span>
+                        </td>
+
+                        {/* شماره همراه */}
+                        <td className="py-3.5 px-4 font-mono font-medium text-slate-700">
+                          {user.phone ? toPersianDigits(user.phone) : "—"}
+                        </td>
+
+                        {/* وضعیت فعال */}
+                        <td className="py-3.5 px-4">
+                          {user.is_active !== undefined ? (
+                            user.is_active ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700 border border-emerald-200">
+                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                                فعال
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-bold text-rose-700 border border-rose-200">
+                                <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+                                غیرفعال
+                              </span>
+                            )
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </td>
+
+                        {/* نقش‌ها */}
+                        <td className="py-3.5 px-4">
+                          {rolesDisplay.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {rolesDisplay.map((roleLabel, idx) => (
+                                <span
+                                  key={idx}
+                                  className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200/60"
+                                >
+                                  {roleLabel}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </td>
+
+                        {/* دکمه عملیات */}
+                        <td className="py-3.5 px-4 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedUserUuid(user.uuid || String(user.id))}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-600 hover:text-white rounded-lg transition-colors cursor-pointer"
+                          >
+                            <span>مدیریت نقش‌ها</span>
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* کنترل‌های صفحه‌بندی */}
+            {meta && meta.last_page > 1 && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 bg-slate-50/60 border-t border-slate-200 text-xs text-slate-600">
+                <div>
+                  نمایش ردیف‌های{" "}
+                  <span className="font-bold text-slate-900">
+                    {meta.from ? toPersianDigits(meta.from) : "۱"}
+                  </span>{" "}
+                  تا{" "}
+                  <span className="font-bold text-slate-900">
+                    {meta.to ? toPersianDigits(meta.to) : toPersianDigits(users.length)}
+                  </span>{" "}
+                  از مجموع{" "}
+                  <span className="font-bold text-slate-900">
+                    {toPersianDigits(meta.total)}
+                  </span>{" "}
+                  کاربر
+                </div>
+
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => handlePageChange(meta.current_page - 1)}
+                    disabled={meta.current_page <= 1}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronRight className="h-3.5 w-3.5" />
+                    <span>قبلی</span>
+                  </button>
+
+                  <span className="px-3 py-1.5 font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg">
+                    صفحه {toPersianDigits(meta.current_page)} از {toPersianDigits(meta.last_page)}
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() => handlePageChange(meta.current_page + 1)}
+                    disabled={meta.current_page >= meta.last_page}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <span>بعدی</span>
+                    <ChevronLeft className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
             )}
-            <span>{feedback.message}</span>
+          </>
+        )}
+      </div>
+
+      {/* مودال جزئیات و مدیریت نقش‌های کاربر */}
+      {selectedUserUuid && (
+        <UserDetailAndRolesModal
+          userUuid={selectedUserUuid}
+          currentSessionUuid={currentSessionUser?.uuid}
+          onClose={() => setSelectedUserUuid(null)}
+          onRequestDeleteRole={(uuid, role, label) => setRoleToDelete({ uuid, role, label })}
+        />
+      )}
+
+      {/* دیالوگ تأیید حذف نقش */}
+      {roleToDelete && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3 text-rose-600">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-50">
+                <Trash2 className="h-5 w-5" />
+              </div>
+              <h4 className="text-sm font-bold text-slate-900">
+                تأیید سلب نقش کاربر
+              </h4>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              آیا از سلب نقش <strong className="text-slate-900">«{roleToDelete.label}»</strong> از این کاربر اطمینان دارید؟
+            </p>
+
+            <ConfirmDeleteRoleAction
+              roleToDelete={roleToDelete}
+              onClose={() => setRoleToDelete(null)}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// کامپوننت مودال جزییات کاربر و مدیریت نقش‌ها
+function UserDetailAndRolesModal({
+  userUuid,
+  currentSessionUuid,
+  onClose,
+  onRequestDeleteRole,
+}: {
+  userUuid: string;
+  currentSessionUuid?: string;
+  onClose: () => void;
+  onRequestDeleteRole: (uuid: string, role: UserRoleValue, label: string) => void;
+}) {
+  const { data: user, isLoading: userLoading } = useAdminUserDetailQuery(userUuid);
+  const { data: activeRoles = [], isLoading: rolesLoading, refetch: refetchRoles } = useUserRolesQuery(userUuid);
+  const assignRoleMutation = useAssignRoleMutation();
+
+  const [selectedNewRole, setSelectedNewRole] = useState<UserRoleValue | "">("");
+
+  // لیست نقش‌هایی که کاربر در حال حاضر ندارد (از بین ۳ نقش سند)
+  const availableRolesToAdd = useMemo(() => {
+    return USER_ROLES_LIST.filter((r) => !activeRoles.includes(r.value));
+  }, [activeRoles]);
+
+  const currentRoleValue = useMemo(() => {
+    if (selectedNewRole && availableRolesToAdd.some((r) => r.value === selectedNewRole)) {
+      return selectedNewRole;
+    }
+    return availableRolesToAdd[0]?.value ?? "";
+  }, [selectedNewRole, availableRolesToAdd]);
+
+  const handleAddRole = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const roleToAdd = currentRoleValue;
+    if (!roleToAdd || assignRoleMutation.isPending) return;
+
+    try {
+      const res = await assignRoleMutation.mutateAsync({
+        uuid: userUuid,
+        role: roleToAdd,
+      });
+      toast.success(res?.message || `نقش «${USER_ROLE_LABELS[roleToAdd]}» با موفقیت اضافه شد.`);
+      setSelectedNewRole("");
+      refetchRoles();
+    } catch (err: unknown) {
+      if (err instanceof ApiError) {
+        toast.error(err.message);
+        return;
+      }
+      toast.error(err instanceof Error ? err.message : "خطا در انتساب نقش.");
+    }
+  };
+
+  const isSelfSuperAdmin = Boolean(
+    currentSessionUuid &&
+    user?.uuid &&
+    currentSessionUuid === user.uuid
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-5 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
+              <UserCheck className="h-4 w-4" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-slate-900">
+                مشخصات و نقش‌های کاربر
+              </h4>
+              <p className="text-[11px] text-slate-400 font-mono">
+                UUID: {userUuid}
+              </p>
+            </div>
           </div>
           <button
             type="button"
-            onClick={() => setFeedback(null)}
-            className="text-slate-400 hover:text-slate-700"
+            onClick={onClose}
+            className="text-slate-400 hover:text-slate-600 p-1"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
-      )}
 
-      {/* هدر صفحه */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
-            <Users className="h-6 w-6 text-indigo-600" />
-            <span>مدیریت کاربران، پرسنل و ماتریس نقش‌ها</span>
-          </h2>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1 font-medium">
-            تعیین سطوح دسترسی مالی، عملیاتی، مدیریت مالکان رسانه و اختیارات ادمین کل سیستم
+        {userLoading ? (
+          <div className="py-12 flex justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-indigo-600" />
+          </div>
+        ) : !user ? (
+          <p className="text-xs text-rose-600 py-4 text-center">
+            اطلاعات کاربر یافت نشد.
           </p>
-        </div>
-
-        <button
-          type="button"
-          onClick={loadUsers}
-          disabled={loading}
-          className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors shadow-xs"
-        >
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin text-indigo-600" : ""}`} />
-          <span>بروزرسانی</span>
-        </button>
-      </div>
-
-      {/* کارت‌های معرفی نقش‌های اصلی سیستم */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-        {roles.map((role) => (
-          <div
-            key={role.id}
-            className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs space-y-2 hover:border-indigo-300 transition-colors"
-          >
-            <div className="flex items-center justify-between">
-              <span
-                className={`rounded-lg px-2 py-0.5 text-[10px] font-black border ${getRoleBadgeColor(
-                  role.color
-                )}`}
-              >
-                {role.slug}
-              </span>
-              <span className="text-[10px] font-bold text-slate-400">
-                {role.permissionsCount} دسترسی
-              </span>
-            </div>
-            <h4 className="text-xs font-extrabold text-slate-900 truncate">
-              {role.name}
-            </h4>
-            <p className="text-[11px] text-slate-500 line-clamp-2 leading-relaxed">
-              {role.description}
-            </p>
-          </div>
-        ))}
-      </div>
-
-      {/* نوار جستجو و تب‌های نقش */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        {/* فیلتر تب نقش */}
-        <div className="flex space-x-reverse space-x-2 text-xs font-bold overflow-x-auto pb-1 scrollbar-none">
-          <button
-            type="button"
-            onClick={() => setRoleFilter("all")}
-            className={`whitespace-nowrap rounded-xl px-3.5 py-2 border transition-all ${
-              roleFilter === "all"
-                ? "bg-slate-900 text-white border-slate-900 shadow-xs"
-                : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
-            }`}
-          >
-            همه کاربران ({users.length})
-          </button>
-          {roles.map((r) => {
-            const count = users.filter((u) => u.roles.some((ro) => ro.slug === r.slug)).length;
-            const active = roleFilter === r.slug;
-            return (
-              <button
-                key={r.slug}
-                type="button"
-                onClick={() => setRoleFilter(r.slug)}
-                className={`whitespace-nowrap rounded-xl px-3.5 py-2 border transition-all ${
-                  active
-                    ? "bg-indigo-600 text-white border-indigo-600 shadow-xs"
-                    : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
-                }`}
-              >
-                {r.name.split("(")[0]} ({count})
-              </button>
-            );
-          })}
-        </div>
-
-        {/* فیلد جستجو */}
-        <form onSubmit={handleSearchSubmit} className="relative w-full sm:w-72">
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="جستجوی نام کاربر، ایمیل، موبایل..."
-            className="w-full rounded-xl border border-slate-200 bg-white py-2 pr-9 pl-3 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none placeholder:text-slate-400"
-          />
-          <Search className="absolute right-3 top-2.5 h-4 w-4 text-slate-400 pointer-events-none" />
-        </form>
-      </div>
-
-      {/* جدول کاربران */}
-      <div className="rounded-2xl border border-slate-200 bg-white shadow-xs overflow-hidden">
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-20 space-y-3">
-            <RefreshCw className="h-8 w-8 animate-spin text-indigo-600" />
-            <p className="text-sm font-semibold text-slate-500">
-              در حال دریافت فهرست کاربران و نقش‌ها...
-            </p>
-          </div>
-        ) : filteredUsers.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center space-y-2">
-            <Users className="h-10 w-10 text-slate-300" />
-            <h4 className="text-sm font-bold text-slate-700">
-              کاربری با این مشخصات یافت نشد
-            </h4>
-            <p className="text-xs text-slate-400">
-              عبارت جستجو یا فیلتر نقش انتخابی را تغییر دهید.
-            </p>
-          </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-right text-xs">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50/80 text-slate-600 font-bold">
-                  <th className="py-3.5 px-4">مشخصات کاربر</th>
-                  <th className="py-3.5 px-4">واحد سازمانی / شرکت</th>
-                  <th className="py-3.5 px-4">شماره تماس و ایمیل</th>
-                  <th className="py-3.5 px-4">نقش‌های منتسب</th>
-                  <th className="py-3.5 px-4">وضعیت حساب</th>
-                  <th className="py-3.5 px-4">آخرین ورود</th>
-                  <th className="py-3.5 px-4 text-center">مدیریت اختیارات</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                {filteredUsers.map((user) => (
-                  <tr key={user.id} className="hover:bg-slate-50/70 transition-colors">
-                    {/* مشخصات کاربر */}
-                    <td className="py-3.5 px-4">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 font-black text-slate-700">
-                          {(user.fullName || user.name).charAt(0)}
-                        </div>
-                        <div>
-                          <span className="font-extrabold text-slate-900 block">
-                            {user.fullName || user.name}
+          <div className="space-y-4">
+            {/* جزییات مشخصات کاربر */}
+            <div className="grid grid-cols-2 gap-3 p-3.5 bg-slate-50 rounded-xl border border-slate-100 text-xs">
+              <div>
+                <span className="text-slate-400 block mb-0.5">نام و نام خانوادگی:</span>
+                <span className="font-bold text-slate-900">{user.name || "—"}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block mb-0.5">شماره همراه:</span>
+                <span className="font-bold font-mono text-slate-900">
+                  {user.phone ? toPersianDigits(user.phone) : "—"}
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-400 block mb-0.5">شناسه عددی:</span>
+                <span className="font-bold font-mono text-slate-700">
+                  #{toPersianDigits(user.id)}
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-400 block mb-0.5">وضعیت حساب:</span>
+                <span className="font-bold text-emerald-700">
+                  {user.is_active !== false ? "فعال" : "غیرفعال"}
+                </span>
+              </div>
+
+              {/* لینک به رزروهای این کاربر */}
+              <div className="col-span-2 pt-2 border-t border-slate-200/60">
+                <Link
+                  href={`/admin/bookings?client_id=${user.id}`}
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:underline"
+                >
+                  <span>مشاهده رزروهای ثبت‌شده توسط این کاربر</span>
+                  <ExternalLink className="h-3 w-3" />
+                </Link>
+              </div>
+            </div>
+
+            {/* بخش نقش‌های فعال کاربر */}
+            <div className="space-y-2.5">
+              <h5 className="text-xs font-bold text-slate-800 flex items-center justify-between">
+                <span>نقش‌های فعال کاربر:</span>
+                {rolesLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-indigo-600" />}
+              </h5>
+
+              {activeRoles.length === 0 ? (
+                <div className="p-3 bg-slate-50 rounded-xl text-center text-xs text-slate-400">
+                  هیچ نقشی به این کاربر اختصاص داده نشده است.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {activeRoles.map((roleKey) => {
+                    const label = USER_ROLE_LABELS[roleKey] || roleKey;
+                    const isSelfAdminRole = isSelfSuperAdmin && roleKey === "super_admin";
+
+                    return (
+                      <div
+                        key={roleKey}
+                        className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200 bg-white shadow-2xs"
+                      >
+                        <div className="flex items-center gap-2">
+                          <ShieldCheck className="h-4 w-4 text-indigo-600" />
+                          <span className="text-xs font-bold text-slate-900">
+                            {label}
                           </span>
                           <span className="font-mono text-[10px] text-slate-400">
-                            کد ملی: {user.nationalCode || "تایید شده"}
+                            ({roleKey})
                           </span>
                         </div>
-                      </div>
-                    </td>
 
-                    {/* واحد یا شرکت */}
-                    <td className="py-3.5 px-4">
-                      <span className="font-bold text-slate-800 block">
-                        {user.department}
-                      </span>
-                      {user.company && (
-                        <span className="text-[11px] text-slate-400">
-                          {user.company}
-                        </span>
-                      )}
-                    </td>
-
-                    {/* شماره و ایمیل */}
-                    <td className="py-3.5 px-4">
-                      <div className="flex flex-col text-[11px] font-mono">
-                        <span className="text-slate-800">{user.phone}</span>
-                        <span className="text-slate-400">{user.email}</span>
-                      </div>
-                    </td>
-
-                    {/* نقش‌ها */}
-                    <td className="py-3.5 px-4">
-                      <div className="flex flex-wrap gap-1.5 max-w-xs">
-                        {user.roles.map((r) => (
+                        {isSelfAdminRole ? (
                           <span
-                            key={r.slug}
-                            className={`rounded-md px-2 py-0.5 text-[10px] font-bold border ${getRoleBadgeColor(
-                              r.color
-                            )}`}
+                            className="text-[11px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded cursor-not-allowed"
+                            title="نمی‌توانید نقش مدیر ارشد خودتان را حذف کنید"
                           >
-                            {r.name.split("(")[0]}
+                            غیرقابل حذف (نقش خودتان)
                           </span>
-                        ))}
-                      </div>
-                    </td>
-
-                    {/* وضعیت */}
-                    <td className="py-3.5 px-4 whitespace-nowrap">
-                      <span
-                        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
-                          user.status === "active"
-                            ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
-                            : "bg-rose-50 text-rose-800 border border-rose-200"
-                        }`}
-                      >
-                        <span
-                          className={`h-1.5 w-1.5 rounded-full ${
-                            user.status === "active" ? "bg-emerald-500" : "bg-rose-500"
-                          }`}
-                        />
-                        {user.statusLabel}
-                      </span>
-                    </td>
-
-                    {/* آخرین ورود */}
-                    <td className="py-3.5 px-4 whitespace-nowrap text-slate-400 text-[11px]">
-                      {user.lastLogin}
-                    </td>
-
-                    {/* دکمه مدیریت اختیارات */}
-                    <td className="py-3.5 px-4 text-center whitespace-nowrap">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedUser(user)}
-                        className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-700 hover:bg-indigo-600 hover:text-white transition-all shadow-2xs"
-                      >
-                        <ShieldCheck className="h-3.5 w-3.5" />
-                        <span>مدیریت نقش‌ها</span>
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* مودال جامع مدیریت نقش‌ها و اختیارات کاربر */}
-      {selectedUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in">
-          <div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl space-y-5 text-right">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2">
-                <KeyRound className="h-5 w-5 text-indigo-600" />
-                <h3 className="text-base font-extrabold text-slate-900">
-                  مدیریت دسترسی‌ها و نقش‌های کاربر
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelectedUser(null)}
-                className="text-slate-400 hover:text-slate-700"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            {/* کارت مشخصات کاربر */}
-            <div className="flex items-center justify-between rounded-xl bg-slate-50 p-3.5 border border-slate-200">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600 text-white font-black text-sm">
-                  {(selectedUser.fullName || selectedUser.name).charAt(0)}
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold text-slate-900">
-                    {selectedUser.fullName || selectedUser.name}
-                  </h4>
-                  <p className="text-[11px] text-slate-500 font-mono">
-                    {selectedUser.email} • {selectedUser.phone}
-                  </p>
-                </div>
-              </div>
-              <span className="rounded-lg bg-indigo-100 px-2.5 py-1 text-[10px] font-bold text-indigo-800">
-                {selectedUser.department}
-              </span>
-            </div>
-
-            {/* انتخاب یا سلب نقش‌ها */}
-            <div className="space-y-3">
-              <h4 className="text-xs font-extrabold text-slate-900 flex items-center justify-between">
-                <span>نقش‌های سازمانی فعال برای این کاربر</span>
-                <span className="text-[11px] font-normal text-slate-400">
-                  برای تغییر وضعیت روی چک‌باکس یا دکمه کلیک فرمایید
-                </span>
-              </h4>
-
-              <div className="space-y-2">
-                {roles.map((role) => {
-                  const hasRole = selectedUser.roles.some((r) => r.slug === role.slug);
-
-                  return (
-                    <div
-                      key={role.slug}
-                      className={`flex items-center justify-between rounded-xl border p-3 transition-colors ${
-                        hasRole
-                          ? "border-indigo-300 bg-indigo-50/40"
-                          : "border-slate-200 bg-white hover:bg-slate-50"
-                      }`}
-                    >
-                      <div className="space-y-0.5">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-bold text-slate-900">
-                            {role.name}
-                          </span>
-                          <span
-                            className={`rounded px-1.5 py-0.2 text-[10px] font-bold border ${getRoleBadgeColor(
-                              role.color
-                            )}`}
-                          >
-                            {role.slug}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-500 leading-relaxed font-medium">
-                          {role.description}
-                        </p>
-                      </div>
-
-                      <div>
-                        {hasRole ? (
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveRole(selectedUser.id, role.slug)}
-                            disabled={actionLoading}
-                            className="flex items-center gap-1 rounded-lg border border-rose-200 bg-white px-2.5 py-1 text-[11px] font-bold text-rose-700 hover:bg-rose-50 transition-colors disabled:opacity-50"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                            <span>سلب نقش</span>
-                          </button>
                         ) : (
                           <button
                             type="button"
-                            onClick={() => handleAssignRole(selectedUser.id, role.slug)}
-                            disabled={actionLoading}
-                            className="flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-1 text-[11px] font-bold text-white hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                            onClick={() => onRequestDeleteRole(userUuid, roleKey, label)}
+                            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                            title={`سلب نقش ${label}`}
                           >
-                            <Plus className="h-3 w-3" />
-                            <span>اختصاص نقش</span>
+                            <Trash2 className="h-3.5 w-3.5" />
+                            <span>سلب نقش</span>
                           </button>
                         )}
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
-            {/* فوتر مودال */}
-            <div className="flex items-center justify-end pt-3 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setSelectedUser(null)}
-                className="rounded-xl bg-slate-900 px-5 py-2 text-xs font-bold text-white hover:bg-slate-800 transition-colors"
-              >
-                تایید و بستن
-              </button>
+            {/* بخش افزودن نقش جدید */}
+            <div className="pt-3 border-t border-slate-100 space-y-2">
+              <h5 className="text-xs font-bold text-slate-800">
+                افزودن نقش جدید:
+              </h5>
+
+              {availableRolesToAdd.length === 0 ? (
+                <p className="text-xs text-slate-400 bg-slate-50 p-2.5 rounded-xl text-center">
+                  تمامی نقش‌های مجاز (مشتری، مالک رسانه، مدیر ارشد) به این کاربر اختصاص یافته است.
+                </p>
+              ) : (
+                <form onSubmit={handleAddRole} className="flex items-center gap-2">
+                  <select
+                    value={currentRoleValue}
+                    onChange={(e) => setSelectedNewRole(e.target.value as UserRoleValue)}
+                    className="flex-1 h-9 px-3 rounded-xl border border-slate-200 bg-slate-50 text-xs text-slate-800 focus:bg-white focus:border-indigo-500 focus:outline-none"
+                  >
+                    {availableRolesToAdd.map((r) => (
+                      <option key={r.value} value={r.value}>
+                        {r.label} ({r.value})
+                      </option>
+                    ))}
+                  </select>
+
+                  <button
+                    type="submit"
+                    disabled={!currentRoleValue || assignRoleMutation.isPending}
+                    className="h-9 px-3.5 inline-flex items-center gap-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-xl transition-all shadow-xs cursor-pointer"
+                  >
+                    {assignRoleMutation.isPending ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Plus className="h-3.5 w-3.5" />
+                    )}
+                    <span>افزودن نقش</span>
+                  </button>
+                </form>
+              )}
             </div>
           </div>
+        )}
+
+        <div className="flex justify-end pt-2 border-t border-slate-100">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
+          >
+            بستن
+          </button>
         </div>
-      )}
+      </div>
+    </div>
+  );
+}
+
+// کامپوننت اجرای حذف نقش
+function ConfirmDeleteRoleAction({
+  roleToDelete,
+  onClose,
+}: {
+  roleToDelete: { uuid: string; role: UserRoleValue; label: string };
+  onClose: () => void;
+}) {
+  const removeRoleMutation = useRemoveRoleMutation();
+
+  const handleConfirm = async () => {
+    try {
+      const res = await removeRoleMutation.mutateAsync({
+        uuid: roleToDelete.uuid,
+        role: roleToDelete.role,
+      });
+      toast.success(res?.message || `نقش «${roleToDelete.label}» با موفقیت سلب شد.`);
+      onClose();
+    } catch (err: unknown) {
+      if (err instanceof ApiError) {
+        toast.error(err.message);
+        return;
+      }
+      toast.error(err instanceof Error ? err.message : "خطا در سلب نقش.");
+    }
+  };
+
+  return (
+    <div className="flex items-center justify-end gap-2 pt-2">
+      <button
+        type="button"
+        onClick={onClose}
+        disabled={removeRoleMutation.isPending}
+        className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
+      >
+        انصراف
+      </button>
+      <button
+        type="button"
+        onClick={handleConfirm}
+        disabled={removeRoleMutation.isPending}
+        className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-50 rounded-xl flex items-center gap-1.5 cursor-pointer"
+      >
+        {removeRoleMutation.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+        <span>تأیید و سلب نقش</span>
+      </button>
     </div>
   );
 }

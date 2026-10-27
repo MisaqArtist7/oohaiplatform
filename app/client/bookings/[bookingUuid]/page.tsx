@@ -1,6 +1,8 @@
 import { Metadata } from "next";
 import { BookingDetailView } from "@/features/bookings";
 
+
+
 interface BookingPageProps {
   params: Promise<{
     bookingUuid: string;

@@ -1,100 +1,97 @@
-export type AdminBookingStatus =
-  | "pending_review"
-  | "locked_for_contract"
-  | "proforma_issued"
-  | "payment_submitted"
-  | "approved"
-  | "active"
-  | "rejected"
-  | "cancelled";
+import type {
+  Booking,
+  BookingLog,
+  BookingDocument,
+  BookingStatus,
+  BookingStatusValue,
+  BookingAction,
+} from "@/features/bookings";
 
-export interface AdminBookingTimelineItem {
+// بازاستفاده از تایپ‌های مدل رزرو
+export type {
+  Booking,
+  BookingLog,
+  BookingDocument,
+  BookingStatus,
+  BookingStatusValue,
+  BookingAction,
+};
+
+// فقط ۳ نقش مجاز مطابق سند
+export type UserRoleValue = "client" | "media_owner" | "super_admin";
+
+export const USER_ROLE_LABELS: Record<UserRoleValue, string> = {
+  client: "مشتری",
+  media_owner: "مالک رسانه",
+  super_admin: "مدیر ارشد",
+};
+
+export const USER_ROLES_LIST: Array<{ value: UserRoleValue; label: string }> = [
+  { value: "client", label: "مشتری" },
+  { value: "media_owner", label: "مالک رسانه" },
+  { value: "super_admin", label: "مدیر ارشد" },
+];
+
+/**
+ * مدل کاربر ادمین: منحصراً فیلدهای مجاز
+ */
+export interface AdminUser {
+  id: number;
+  uuid: string;
+  name: string;
+  phone: string;
+  is_active?: boolean;
+  role?: UserRoleValue | string;
+  roles?: (UserRoleValue | string | { name?: string; slug?: string })[];
+}
+
+/**
+ * فیلترهای استاندارد رزرو ادمین (فقط آنچه سند پشتیبانی می‌کند)
+ */
+export interface AdminBookingFilters {
+  status?: BookingStatusValue | string;
+  structure_id?: number | string;
+  client_id?: number | string;
+  page?: number;
+}
+
+/**
+ * فیلترهای کاربران ادمین
+ */
+export interface AdminUserFilters {
+  search?: string;
+  page?: number;
+  per_page?: number;
+}
+
+/**
+ * ساختار استاندارد صفحه‌بندی Page<T> برای لایه UI
+ */
+export interface PageMeta {
+  current_page: number;
+  from?: number | null;
+  last_page: number;
+  per_page: number;
+  to?: number | null;
+  total: number;
+}
+
+export interface Page<T> {
+  data: T[];
+  meta?: PageMeta;
+  links?: {
+    first?: string | null;
+    last?: string | null;
+    prev?: string | null;
+    next?: string | null;
+  };
+}
+
+export interface AdminMediaOwnerRequestDocument {
   id: string;
   title: string;
-  description: string;
-  timestamp: string;
-  actor: string;
-  status: string;
-  isDone: boolean;
-  isCurrent?: boolean;
-}
-
-export interface AdminBookingPaymentItem {
-  id: string;
-  method: string;
-  methodLabel?: string;
-  amount: number;
-  trackingCode?: string;
-  bankName?: string;
-  checkSerial?: string;
-  checkSayadId?: string;
-  dueDate?: string;
-  submittedAt?: string;
-  status: string;
-  statusLabel?: string;
-  receiptUrl?: string;
-  notes?: string;
-}
-
-export interface AdminBookingDocumentItem {
-  id: string;
-  title: string;
-  type?: string;
-  typeLabel?: string;
-  date?: string;
-  fileSize?: string;
-  downloadUrl?: string;
-  requiresSignature?: boolean;
-}
-
-export interface AdminBooking {
-  id: string;
-  trackingCode: string;
-  structure: {
-    id: string;
-    code: string;
-    title: string;
-    address: string;
-    district: string;
-    dimensions: string;
-    image: string;
-    type: string;
-    category: string;
-  };
-  startDate: string;
-  endDate: string;
-  durationDays: number;
-  totalPrice: number;
-  status: {
-    value: string;
-    label: string;
-    color?: string;
-  };
-  brandName: string;
-  contactPerson: string;
-  contactPhone: string;
-  createdAt: string;
-  lockedUntil?: string;
-  proforma?: {
-    id: string;
-    number: string;
-    issueDate: string;
-    expiresAt: string;
-    amount: number;
-    downloadUrl: string;
-  };
-  timeline: AdminBookingTimelineItem[];
-  payments: AdminBookingPaymentItem[];
-  documents: AdminBookingDocumentItem[];
-  customer?: {
-    fullName: string;
-    companyName: string;
-    phone: string;
-  };
-  rejectionReason?: string;
-  lockedAt?: string;
-  approvedAt?: string;
-  financialManagerNote?: string;
+  fileUrl: string;
+  fileSize: string;
 }
 
 export interface AdminMediaOwnerRequest {
@@ -105,70 +102,18 @@ export interface AdminMediaOwnerRequest {
   contactPerson: string;
   phone: string;
   address: string;
+  province?: string;
   structuresCount: number;
-  province: string;
   status: "pending" | "approved" | "rejected";
   statusLabel: string;
   submittedAt: string;
   reviewedAt?: string;
   reviewedBy?: string;
   rejectionReason?: string;
-  documents: Array<{
-    id: string;
-    title: string;
-    fileUrl: string;
-    fileSize: string;
-  }>;
+  documents?: AdminMediaOwnerRequestDocument[];
 }
 
-export interface AdminRole {
-  id: string;
-  name: string;
-  slug: string;
-  description: string;
-  color: string;
-  permissionsCount: number;
-}
 
-export interface AdminUser {
-  id: string;
-  name: string;
-  fullName?: string;
-  phone: string;
-  email: string;
-  nationalCode?: string;
-  company?: string;
-  department: string;
-  roles: AdminRole[];
-  status: "active" | "inactive" | "suspended";
-  statusLabel: string;
-  createdAt: string;
-  lastLogin: string;
-  avatarUrl?: string;
-}
-
-export interface BookingAuditLog {
-  id: string;
-  bookingId: string;
-  actor: string;
-  action: string;
-  previousStatus?: string;
-  newStatus: string;
-  timestamp: string;
-  note?: string;
-  ipAddress?: string;
-}
-
-export interface AdminBookingFilterParams {
-  status?: string;
-  customer?: string;
-  structure?: string;
-  startDate?: string;
-  endDate?: string;
-  search?: string;
-}
-
-// Superadmin Media Owner Request Items & Helpers
 export interface MediaOwnerRequestItem {
   id: string | number;
   company_name?: string;
@@ -184,6 +129,12 @@ export interface MediaOwnerRequestItem {
   created_at?: string | null;
 }
 
+export interface StatusBadgeInfo {
+  key: "approved" | "pending" | "rejected";
+  label: string;
+  className: string;
+}
+
 export const formatDate = (iso?: string | null) => {
   if (!iso) return "—";
   try {
@@ -197,13 +148,7 @@ export const formatDate = (iso?: string | null) => {
   }
 };
 
-export interface StatusBadgeInfo {
-  key: "approved" | "pending" | "rejected";
-  label: string;
-  className: string;
-}
-
-export const getStatusBadge = (status?: unknown) => {
+export const getStatusBadge = (status?: unknown): StatusBadgeInfo => {
   let val = "";
   let label = "";
 
@@ -333,3 +278,4 @@ export const DEFAULT_SAMPLE_REQUESTS: MediaOwnerRequestItem[] = [
     description: "درخواست همکاری جهت تابلوهای تبلیغاتی شمال کشور.",
   },
 ];
+

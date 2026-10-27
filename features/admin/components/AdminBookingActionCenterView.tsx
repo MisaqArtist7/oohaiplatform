@@ -4,22 +4,32 @@ import { useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
-  Lock,
-  FileText,
+  Building2,
+  Calendar,
   CreditCard,
-  CheckCircle2,
-  AlertCircle,
   Clock,
   Download,
-  Building,
   User,
   History,
   X,
   RefreshCw,
   Upload,
+  AlertCircle,
+  CheckCircle2,
+  FileText,
+  AlertTriangle,
+  Loader2,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { AdminBooking, BookingAuditLog } from "../types";
+import {
+  BookingStatusBadge,
+  LockCountdown,
+  BOOKING_STEPPER_STEPS,
+  type BookingLog,
+  type BookingDocument,
+} from "@/features/bookings";
+
 import {
   useAdminBookingDetailQuery,
   useAdminBookingLogsQuery,
@@ -27,8 +37,14 @@ import {
   useIssueProformaMutation,
   useApprovePaymentMutation,
   useRejectBookingMutation,
-  useTransitionBookingMutation,
+  useCompleteBookingMutation,
 } from "../hooks/useAdmin";
+import { getAdminDocumentDownloadUrl } from "../api/admin.api";
+import { openSignedUrl } from "@/shared/lib/open-signed-url";
+import { formatToman } from "@/shared/lib/money";
+import { formatJalali } from "@/shared/lib/dates";
+import { toPersianDigits } from "@/shared/lib/digits";
+import { ApiError } from "@/shared/lib/errors";
 
 interface AdminBookingActionCenterViewProps {
   bookingId: string;
@@ -37,576 +53,519 @@ interface AdminBookingActionCenterViewProps {
 export default function AdminBookingActionCenterView({
   bookingId,
 }: AdminBookingActionCenterViewProps) {
-  // واکشی داده‌های رزرو و لاگ‌ها از TanStack Query
+  // ۱. واکشی جزییات پرونده رزرو و لاگ‌های حسابرسی
   const {
-    data: bookingRes,
+    data: booking,
     isLoading: bookingLoading,
+    isError: bookingError,
+    error,
     refetch: refetchBooking,
   } = useAdminBookingDetailQuery(bookingId);
 
-  const {
-    data: logsRes,
-    refetch: refetchLogs,
-  } = useAdminBookingLogsQuery(bookingId);
+  // در صورتی که جزئیات پرونده حاوی logs نباشد، از اندپوینت لاگ‌ها استفاده می‌شود
+  const { data: logsData, refetch: refetchLogs } = useAdminBookingLogsQuery(bookingId);
 
+  // موتیشن‌های عملیات مجاز ادمین
   const lockMutation = useLockBookingMutation();
   const proformaMutation = useIssueProformaMutation();
   const approvePaymentMutation = useApprovePaymentMutation();
   const rejectMutation = useRejectBookingMutation();
-  const transitionMutation = useTransitionBookingMutation();
+  const completeMutation = useCompleteBookingMutation();
 
-  const booking: AdminBooking | null = bookingRes?.data || null;
-  const logs: BookingAuditLog[] = logsRes?.data || [];
-  const loading = bookingLoading && !booking;
+  // وضعیت دانلود مدرک
+  const [downloadingDocId, setDownloadingDocId] = useState<number | string | null>(null);
 
-  const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  // استیت‌های مودال‌های عملیاتی
+  const [activeModal, setActiveModal] = useState<
+    "lock" | "proforma" | "approve" | "reject" | "complete" | null
+  >(null);
 
-  // وضعیت مودال‌ها
-  const [lockModalOpen, setLockModalOpen] = useState(false);
-  const [proformaModalOpen, setProformaModalOpen] = useState(false);
-  const [approvePaymentModalOpen, setApprovePaymentModalOpen] = useState(false);
-  const [rejectModalOpen, setRejectModalOpen] = useState(false);
-  const [transitionModalOpen, setTransitionModalOpen] = useState(false);
+  // فیلدهای فرم دیالوگ‌ها
+  const [actionNote, setActionNote] = useState("");
+  const [rejectReason, setRejectReason] = useState("");
+  const [proformaFile, setProformaFile] = useState<File | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
-  // فرم پیش‌فاکتور
-  const [invoiceNumber, setInvoiceNumber] = useState("");
-  const [invoiceAmount, setInvoiceAmount] = useState<number>(0);
-  const [invoiceFileUrl, setInvoiceFileUrl] = useState("");
-
-  // فرم رد درخواست
-  const [rejectionReason, setRejectionReason] = useState("");
-
-  // فرم تایید پرداخت
-  const [financialApprovalNote, setFinancialApprovalNote] = useState("");
-
-  // فرم تغییر وضعیت دستی
-  const [newStatusValue, setNewStatusValue] = useState("");
-  const [newStatusLabel, setNewStatusLabel] = useState("");
-  const [transitionNote, setTransitionNote] = useState("");
-
-  const handleOpenProformaModal = () => {
-    if (booking) {
-      setInvoiceAmount(booking.totalPrice || 0);
-      setInvoiceNumber(`PF-${new Date().getFullYear()}-${booking.id.replace("BK-", "")}`);
+  const normalizeFieldErrors = (errors?: Record<string, string[] | string>): Record<string, string> => {
+    if (!errors) return {};
+    const res: Record<string, string> = {};
+    for (const [key, val] of Object.entries(errors)) {
+      res[key] = Array.isArray(val) ? val[0] : String(val);
     }
-    setProformaModalOpen(true);
+    return res;
   };
 
-
-  const fetchData = () => {
-    refetchBooking();
-    refetchLogs();
-  };
-
-  const actionLoading =
+  const isSubmitting =
     lockMutation.isPending ||
     proformaMutation.isPending ||
     approvePaymentMutation.isPending ||
     rejectMutation.isPending ||
-    transitionMutation.isPending;
+    completeMutation.isPending;
 
-  // عملیات: قفل ۴۸ ساعته
-  const handleLock = async () => {
+  const closeModal = () => {
+    if (isSubmitting) return;
+    setActiveModal(null);
+    setActionNote("");
+    setRejectReason("");
+    setProformaFile(null);
+    setFieldErrors({});
+  };
+
+  // دانلود امن مدارک
+  const handleDownloadDoc = async (docId: number | string) => {
+    if (downloadingDocId || !booking) return;
+    setDownloadingDocId(docId);
     try {
-      const res = await lockMutation.mutateAsync(bookingId);
-      if (res.success) {
-        toast.success(res.message || "قفل ۴۸ ساعته سازه با موفقیت فعال گردید.");
-        setFeedback({ type: "success", message: res.message || "قفل ۴۸ ساعته سازه با موفقیت فعال گردید." });
-        setLockModalOpen(false);
-      } else {
-        toast.error(res.message || "خطا در اعمال قفل سازه");
-        setFeedback({ type: "error", message: res.message || "خطا در اعمال قفل سازه" });
-      }
-    } catch {
-      toast.error("خطای ناشناخته در اعمال قفل");
-      setFeedback({ type: "error", message: "خطای ناشناخته در اعمال قفل" });
+      await openSignedUrl(
+        () => getAdminDocumentDownloadUrl(booking.id, docId),
+        { errorMessage: "خطا در دریافت لینک دانلود مدرک" }
+      );
+    } finally {
+      setDownloadingDocId(null);
     }
   };
 
-  // عملیات: صدور پیش‌فاکتور
-  const handleIssueProforma = async (e: React.FormEvent) => {
+  // ۱. هندلر قفل قرارداد
+  const handleLockSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!invoiceNumber.trim()) {
-      toast.error("لطفاً شماره پیش‌فاکتور را وارد فرمایید.");
-      setFeedback({ type: "error", message: "لطفاً شماره پیش‌فاکتور را وارد فرمایید." });
+    if (isSubmitting || !booking) return;
+    setFieldErrors({});
+
+    try {
+      const res = await lockMutation.mutateAsync({
+        id: booking.id,
+        note: actionNote.trim() || undefined,
+      });
+      toast.success(res?.message || "رزرو با موفقیت برای قرارداد قفل شد.");
+      closeModal();
+    } catch (err: unknown) {
+      if (err instanceof ApiError && err.status === 422 && err.fieldErrors) {
+        setFieldErrors(normalizeFieldErrors(err.fieldErrors));
+        return;
+      }
+      toast.error(err instanceof Error ? err.message : "خطا در اعمال قفل قرارداد.");
+    }
+  };
+
+  // ۲. هندلر صدور پیش‌فاکتور
+  const handleProformaSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isSubmitting || !booking) return;
+    setFieldErrors({});
+
+    if (!proformaFile) {
+      setFieldErrors({ document: "بارگذاری فایل پیش‌فاکتور الزامی است." });
       return;
     }
+
+    if (proformaFile.size > 10 * 1024 * 1024) {
+      setFieldErrors({ document: "حجم فایل نمی‌تواند بیشتر از ۱۰ مگابایت باشد." });
+      return;
+    }
+
     try {
       const res = await proformaMutation.mutateAsync({
-        bookingId,
-        payload: {
-          invoiceNumber: invoiceNumber.trim(),
-          amount: Number(invoiceAmount) || booking?.totalPrice || 0,
-          fileUrl: invoiceFileUrl.trim() || undefined,
-        },
+        id: booking.id,
+        file: proformaFile,
+        note: actionNote.trim() || undefined,
       });
-      if (res.success) {
-        toast.success(res.message || "پیش‌فاکتور رسمی با موفقیت صادر شد.");
-        setFeedback({ type: "success", message: res.message || "پیش‌فاکتور رسمی با موفقیت صادر شد." });
-        setProformaModalOpen(false);
-      } else {
-        toast.error(res.message || "خطا در صدور پیش‌فاکتور");
-        setFeedback({ type: "error", message: res.message || "خطا در صدور پیش‌فاکتور" });
+      toast.success(res?.message || "پیش‌فاکتور رسمی با موفقیت صادر و ثبت شد.");
+      closeModal();
+    } catch (err: unknown) {
+      if (err instanceof ApiError && err.status === 422 && err.fieldErrors) {
+        setFieldErrors(normalizeFieldErrors(err.fieldErrors));
+        return;
       }
-    } catch {
-      toast.error("خطای ارتباط با سرور در صدور پیش‌فاکتور");
-      setFeedback({ type: "error", message: "خطای ارتباط با سرور در صدور پیش‌فاکتور" });
+      toast.error(err instanceof Error ? err.message : "خطا در صدور پیش‌فاکتور.");
     }
   };
 
-  // عملیات: تایید نهایی پرداخت و اکران
-  const handleApprovePayment = async (e: React.FormEvent) => {
+  // ۳. هندلر تایید پرداخت
+  const handleApprovePaymentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting || !booking) return;
+    setFieldErrors({});
+
     try {
       const res = await approvePaymentMutation.mutateAsync({
-        bookingId,
-        approvalNote: financialApprovalNote.trim(),
+        id: booking.id,
+        note: actionNote.trim() || undefined,
       });
-      if (res.success) {
-        toast.success(res.message || "پرداخت تایید شد و مجوز اکران صادر گردید.");
-        setFeedback({ type: "success", message: res.message || "پرداخت تایید شد و مجوز اکران صادر گردید." });
-        setApprovePaymentModalOpen(false);
-      } else {
-        toast.error(res.message || "خطا در تایید مالی پرداخت");
-        setFeedback({ type: "error", message: res.message || "خطا در تایید مالی پرداخت" });
+      toast.success(res?.message || "پرداخت تایید و بازه اکران فعال گردید.");
+      closeModal();
+    } catch (err: unknown) {
+      if (err instanceof ApiError && err.status === 422 && err.fieldErrors) {
+        setFieldErrors(normalizeFieldErrors(err.fieldErrors));
+        return;
       }
-    } catch {
-      toast.error("خطای ارتباط با سرور در تایید پرداخت");
-      setFeedback({ type: "error", message: "خطای ارتباط با سرور در تایید پرداخت" });
+      toast.error(err instanceof Error ? err.message : "خطا در تایید پرداخت.");
     }
   };
 
-  // عملیات: رد رزرو با ذکر علت
-  const handleReject = async (e: React.FormEvent) => {
+  // ۴. هندلر رد درخواست
+  const handleRejectSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!rejectionReason.trim()) {
-      toast.error("ذکر علت رد درخواست رزرو الزامی است.");
-      setFeedback({ type: "error", message: "ذکر علت رد درخواست رزرو الزامی است." });
+    if (isSubmitting || !booking) return;
+    setFieldErrors({});
+
+    const cleanReason = rejectReason.trim();
+    if (!cleanReason) {
+      setFieldErrors({ reason: "ثبت دلیل رد درخواست الزامی است." });
       return;
     }
+
     try {
       const res = await rejectMutation.mutateAsync({
-        bookingId,
-        reason: rejectionReason.trim(),
+        id: booking.id,
+        reason: cleanReason,
       });
-      if (res.success) {
-        toast.success(res.message || "درخواست رزرو رد شد و در سوابق ذخیره گردید.");
-        setFeedback({ type: "success", message: res.message || "درخواست رزرو رد شد و در سوابق ذخیره گردید." });
-        setRejectModalOpen(false);
-      } else {
-        toast.error(res.message || "خطا در ثبت رد درخواست");
-        setFeedback({ type: "error", message: res.message || "خطا در ثبت رد درخواست" });
+      toast.success(res?.message || "درخواست رزرو رد شد.");
+      closeModal();
+    } catch (err: unknown) {
+      if (err instanceof ApiError && err.status === 422 && err.fieldErrors) {
+        setFieldErrors(normalizeFieldErrors(err.fieldErrors));
+        return;
       }
-    } catch {
-      toast.error("خطای سرور در رد درخواست");
-      setFeedback({ type: "error", message: "خطای سرور در رد درخواست" });
+      toast.error(err instanceof Error ? err.message : "خطا در رد پرونده.");
     }
   };
 
-  // عملیات: تغییر وضعیت دستی
-  const handleTransition = async (e: React.FormEvent) => {
+  // ۵. هندلر اتمام دوره اکران (Transition به completed)
+  const handleCompleteSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newStatusValue) {
-      toast.error("لطفاً وضعیت مقصد را انتخاب فرمایید.");
-      setFeedback({ type: "error", message: "لطفاً وضعیت مقصد را انتخاب فرمایید." });
-      return;
-    }
+    if (isSubmitting || !booking) return;
+    setFieldErrors({});
+
     try {
-      const res = await transitionMutation.mutateAsync({
-        bookingId,
-        status: newStatusValue,
-        statusLabel: newStatusLabel || undefined,
-        note: transitionNote.trim() || undefined,
+      const res = await completeMutation.mutateAsync({
+        id: booking.id,
+        note: actionNote.trim() || undefined,
       });
-      if (res.success) {
-        toast.success(res.message || "وضعیت پرونده با موفقیت تغییر یافت.");
-        setFeedback({ type: "success", message: res.message || "وضعیت پرونده با موفقیت تغییر یافت." });
-        setTransitionModalOpen(false);
-      } else {
-        toast.error(res.message || "خطا در تغییر وضعیت پرونده");
-        setFeedback({ type: "error", message: res.message || "خطا در تغییر وضعیت پرونده" });
+      toast.success(res?.message || "پایان دوره اکران با موفقیت ثبت شد.");
+      closeModal();
+    } catch (err: unknown) {
+      if (err instanceof ApiError && err.status === 422 && err.fieldErrors) {
+        setFieldErrors(normalizeFieldErrors(err.fieldErrors));
+        return;
       }
-    } catch {
-      toast.error("خطای سرور در تغییر وضعیت");
-      setFeedback({ type: "error", message: "خطای سرور در تغییر وضعیت" });
+      toast.error(err instanceof Error ? err.message : "خطا در تکمیل پرونده اکران.");
     }
   };
 
-  // دانلود امن مستندات
-  const handleSecureDownload = async (documentId: string) => {
-    try {
-      const url = `/api/v1/admin/bookings/documents/${documentId}/download?format=file`;
-      window.open(url, "_blank");
-    } catch (err) {
-      console.error("Error opening document:", err);
-    }
-  };
-
-  if (loading) {
+  if (bookingLoading) {
     return (
-      <div className="flex flex-col items-center justify-center py-24 space-y-4">
-        <RefreshCw className="h-10 w-10 animate-spin text-indigo-600" />
-        <p className="text-sm font-bold text-slate-600">
-          در حال بارگذاری مرکز عملیات و پرونده رزرو {bookingId}...
+      <div className="py-28 flex flex-col items-center justify-center gap-3">
+        <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
+        <p className="text-xs font-semibold text-slate-500">
+          در حال بارگذاری اطلاعات پرونده رزرو #{toPersianDigits(bookingId)}...
         </p>
       </div>
     );
   }
 
-  if (!booking) {
+  if (bookingError || !booking) {
     return (
-      <div className="rounded-2xl border border-rose-200 bg-rose-50 p-8 text-center space-y-4">
-        <AlertCircle className="h-12 w-12 text-rose-600 mx-auto" />
-        <h3 className="text-lg font-black text-rose-900">
-          رزرو مورد نظر یافت نشد
+      <div className="py-20 px-6 text-center bg-white rounded-2xl border border-slate-200">
+        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-rose-50 text-rose-600 mb-3">
+          <AlertCircle className="h-6 w-6" />
+        </div>
+        <h3 className="text-sm font-bold text-slate-900 mb-1">
+          خطا در دریافت مشخصات پرونده رزرو
         </h3>
-        <p className="text-xs text-rose-700 font-medium">
-          ممکن است شناسه پرونده نادرست باشد یا توسط مدیر دیگری حذف شده باشد.
+        <p className="text-xs text-slate-500 max-w-md mx-auto mb-4">
+          {error instanceof Error ? error.message : "پرونده مورد نظر یافت نشد یا دسترسی به آن امکان‌پذیر نیست."}
         </p>
-        <Link
-          href="/admin/bookings"
-          className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-bold text-white hover:bg-slate-800 transition-colors"
-        >
-          <ArrowRight className="h-4 w-4" />
-          <span>بازگشت به فهرست کل رزروها</span>
-        </Link>
+        <div className="flex items-center justify-center gap-2">
+          <Link
+            href="/admin/bookings"
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+          >
+            <ArrowRight className="h-3.5 w-3.5" />
+            <span>بازگشت به لیست رزروها</span>
+          </Link>
+          <button
+            type="button"
+            onClick={() => refetchBooking()}
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-colors cursor-pointer"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            <span>تلاش مجدد</span>
+          </button>
+        </div>
       </div>
     );
   }
 
-  const customerName = booking.customer?.fullName || booking.contactPerson || "مشتری سازمانی";
-  const brandName = booking.customer?.companyName || booking.brandName;
-  const phone = booking.customer?.phone || booking.contactPhone;
+  // داده‌های لاگ (Audit Trail): اولویت با logs موجود در جزئیات، در غیر این‌صورت اندپوینت logs
+  const logsList: BookingLog[] = (booking.logs && booking.logs.length > 0)
+    ? booking.logs
+    : (logsData || []);
+
+  const documentsList: BookingDocument[] = booking.documents || [];
+
+  // محاسبه استپر وضعیت
+  const currentStatusVal = booking.status?.value;
+  const isTerminalStatus = currentStatusVal === "rejected" || currentStatusVal === "expired";
+  const currentStepIndex = BOOKING_STEPPER_STEPS.findIndex((s) => s.value === currentStatusVal);
+
+  const allowedActions = booking.allowed_actions || [];
 
   return (
     <div className="space-y-6">
-      {/* پیام بازخورد و نوتیفیکیشن */}
-      {feedback && (
-        <div
-          className={`flex items-center justify-between rounded-2xl p-4 text-xs font-bold animate-in fade-in duration-200 border ${
-            feedback.type === "success"
-              ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-              : "bg-rose-50 text-rose-800 border-rose-200"
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            {feedback.type === "success" ? (
-              <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
-            ) : (
-              <AlertCircle className="h-4 w-4 shrink-0 text-rose-600" />
-            )}
-            <span>{feedback.message}</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setFeedback(null)}
-            className="text-slate-400 hover:text-slate-700"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      )}
-
-      {/* نوار ناوبری بالا و بازگشت */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      {/* نوار ناوبری بالا و عنوان صفحه */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200">
         <div className="flex items-center gap-3">
           <Link
             href="/admin/bookings"
-            className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-colors"
+            className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 transition-colors shadow-2xs"
             title="بازگشت به لیست رزروها"
           >
             <ArrowRight className="h-4 w-4" />
           </Link>
           <div>
-            <div className="flex items-center gap-2.5">
-              <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-                مرکز عملیات رزرو {booking.id}
+            <div className="flex items-center gap-2">
+              <h2 className="text-xl font-black text-slate-900 tracking-tight">
+                پرونده رزرو #{toPersianDigits(booking.id)}
               </h2>
-              <span className="font-mono text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
-                {booking.trackingCode}
-              </span>
+              <BookingStatusBadge status={booking.status} />
             </div>
-            <p className="text-xs text-slate-500 mt-0.5 font-medium">
-              متقاضی: {brandName} ({customerName}) • ثبت در {booking.createdAt}
+            <p className="text-xs text-slate-500 mt-0.5">
+              ثبت‌شده در تاریخ {formatJalali(booking.created_at)}
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          {/* دکمه به‌روزرسانی زنده */}
           <button
             type="button"
-            onClick={fetchData}
-            className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
-            title="تازه‌سازی اطلاعات"
+            onClick={() => {
+              refetchBooking();
+              refetchLogs();
+            }}
+            disabled={bookingLoading}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-50 disabled:opacity-50 transition-colors cursor-pointer shadow-2xs"
           >
-            <RefreshCw className="h-4 w-4 text-slate-500" />
-            <span>تازه‌سازی</span>
-          </button>
-
-          {/* دکمه تغییر وضعیت دستی */}
-          <button
-            type="button"
-            onClick={() => setTransitionModalOpen(true)}
-            className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
-          >
-            <History className="h-4 w-4 text-slate-500" />
-            <span>تغییر وضعیت دستی</span>
-          </button>
-
-          {/* دکمه رد پرونده */}
-          <button
-            type="button"
-            onClick={() => setRejectModalOpen(true)}
-            className="flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2 text-xs font-bold text-rose-700 hover:bg-rose-100 transition-colors"
-          >
-            <AlertCircle className="h-4 w-4 text-rose-600" />
-            <span>رد درخواست</span>
+            <RefreshCw className={`h-3.5 w-3.5 ${bookingLoading ? "animate-spin" : ""}`} />
+            <span>به‌روزرسانی</span>
           </button>
         </div>
       </div>
 
-      {/* بخش کارت وضعیت و اقدامات فوری عملیاتی */}
-      <div className="rounded-2xl border border-indigo-200/80 bg-linear-to-r from-indigo-900 via-indigo-950 to-slate-900 p-6 text-white shadow-md">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-          <div className="space-y-3">
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-bold text-indigo-200 uppercase tracking-wider">
-                وضعیت فعلی پرونده:
-              </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-500/30 px-3 py-1 text-xs font-black text-white border border-indigo-400/30">
-                <Clock className="h-3.5 w-3.5 text-indigo-300" />
-                {booking.status.label}
-              </span>
-              {booking.lockedUntil && (
-                <span className="rounded-md bg-amber-400/20 px-2 py-0.5 text-[11px] font-bold text-amber-300 border border-amber-300/30">
-                  مهلت قفل: {booking.lockedUntil}
-                </span>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-1">
-              <div>
-                <span className="text-[11px] text-indigo-300 block font-medium">مبلغ کل قرارداد</span>
-                <span className="text-lg font-black text-white">
-                  {booking.totalPrice.toLocaleString("fa-IR")}{" "}
-                  <span className="text-xs font-normal text-indigo-200">تومان</span>
-                </span>
-              </div>
-              <div>
-                <span className="text-[11px] text-indigo-300 block font-medium">مدت اکران</span>
-                <span className="text-lg font-black text-white">
-                  {booking.durationDays.toLocaleString("fa-IR")}{" "}
-                  <span className="text-xs font-normal text-indigo-200">روز</span>
-                </span>
-              </div>
-              <div>
-                <span className="text-[11px] text-indigo-300 block font-medium">بازه اکران</span>
-                <span className="text-xs font-bold text-white block mt-1">
-                  از {booking.startDate} تا {booking.endDate}
-                </span>
-              </div>
-              <div>
-                <span className="text-[11px] text-indigo-300 block font-medium">سازه درخواستی</span>
-                <span className="text-xs font-bold text-white block mt-1 truncate max-w-xs">
-                  {booking.structure.title}
-                </span>
-              </div>
-            </div>
+      {/* هشدار رد شدن یا منقضی شدن */}
+      {currentStatusVal === "rejected" && (
+        <div className="rounded-2xl border border-rose-200 bg-rose-50/80 p-4 text-xs text-rose-800 space-y-1">
+          <div className="flex items-center gap-2 font-bold text-sm">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span>این پرونده رزرو رد شده است</span>
           </div>
+          {booking.rejection_reason && (
+            <p className="pr-6 font-medium leading-relaxed">
+              علت رد: <span className="font-bold">{booking.rejection_reason}</span>
+            </p>
+          )}
+        </div>
+      )}
 
-          {/* اکشن‌های عملیاتی فوری */}
-          <div className="flex flex-wrap lg:flex-nowrap items-center gap-2.5 pt-4 lg:pt-0 border-t lg:border-t-0 border-indigo-800/80">
-            {/* ۱. دکمه تایید اولیه و قفل ۴۸ ساعته */}
-            <button
-              type="button"
-              onClick={() => setLockModalOpen(true)}
-              className="flex-1 lg:flex-none flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-xs font-black text-white shadow-sm hover:bg-blue-500 transition-all hover:scale-102"
-            >
-              <Lock className="h-4 w-4" />
-              <span>تایید اولیه و قفل ۴۸ ساعته</span>
-            </button>
-
-            {/* ۲. دکمه صدور و آپلود پیش‌فاکتور */}
-            <button
-              type="button"
-              onClick={handleOpenProformaModal}
-              className="flex-1 lg:flex-none flex items-center justify-center gap-2 rounded-xl bg-indigo-500 px-4 py-3 text-xs font-black text-white shadow-sm hover:bg-indigo-400 transition-all hover:scale-102"
-            >
-              <FileText className="h-4 w-4" />
-              <span>صدور و آپلود پیش‌فاکتور</span>
-            </button>
-
-            {/* ۳. دکمه تایید نهایی پرداخت */}
-            <button
-              type="button"
-              onClick={() => setApprovePaymentModalOpen(true)}
-              className="w-full lg:w-auto flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black text-white shadow-sm hover:bg-emerald-500 transition-all hover:scale-102"
-            >
-              <CheckCircle2 className="h-4 w-4" />
-              <span>تایید نهایی پرداخت و اکران</span>
-            </button>
+      {currentStatusVal === "expired" && (
+        <div className="rounded-2xl border border-rose-200 bg-rose-50/80 p-4 text-xs text-rose-800 space-y-1">
+          <div className="flex items-center gap-2 font-bold text-sm">
+            <Clock className="h-4 w-4 shrink-0" />
+            <span>مهلت قفل و اقدام این رزرو به پایان رسیده و پرونده منقضی شده است.</span>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* شبکه دو ستونه مشخصات و جزئیات مالی */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {/* ستون راست (۲ واحد): اطلاعات سازه، اسناد و پرداخت‌ها */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* کارت مشخصات سازه تبلیغاتی */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
-            <h3 className="text-sm font-extrabold text-slate-900 mb-4 flex items-center gap-2">
-              <Building className="h-4 w-4 text-indigo-600" />
-              <span>مشخصات فنی و مکانی سازه تبلیغاتی</span>
-            </h3>
+      {/* استپر مراحل (فقط در صورتی که رزرو رد یا منقضی نباشد) */}
+      {!isTerminalStatus && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs space-y-3">
+          <h3 className="text-xs font-bold text-slate-500">
+            گردش‌کار و مراحل پرونده رزرو
+          </h3>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+            {BOOKING_STEPPER_STEPS.map((step, idx) => {
+              const isPassed = currentStepIndex > idx;
+              const isCurrent = currentStepIndex === idx;
 
-            <div className="flex flex-col sm:flex-row gap-4 items-start">
-              {booking.structure.image && (
-                <img
-                  src={booking.structure.image}
-                  alt={booking.structure.title}
-                  className="h-28 w-40 shrink-0 rounded-xl object-cover border border-slate-200"
-                />
-              )}
-              <div className="flex-1 space-y-2">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-sm font-bold text-slate-900">
-                    {booking.structure.title}
-                  </h4>
-                  <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-mono font-bold text-slate-700">
-                    {booking.structure.code}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500 font-medium">
-                  {booking.structure.address} ({booking.structure.district})
-                </p>
-                <div className="flex flex-wrap gap-2 pt-2 text-[11px] font-bold">
-                  <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-slate-700">
-                    نوع: {booking.structure.type}
-                  </span>
-                  <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-slate-700">
-                    دسته‌بندی: {booking.structure.category}
-                  </span>
-                  <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-slate-700">
-                    ابعاد: {booking.structure.dimensions}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* بررسی فیش‌ها و اسناد واریزی مشتری (Payment Review Section) */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
-                <CreditCard className="h-4 w-4 text-purple-600" />
-                <span>بررسی فیش‌ها و اسناد مالی واریز شده مشتری</span>
-              </h3>
-              <span className="text-xs font-bold text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded-full border border-purple-200">
-                {booking.payments.length.toLocaleString("fa-IR")} سند پرداختی
-              </span>
-            </div>
-
-            {booking.payments.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-slate-200 p-6 text-center text-xs text-slate-400 font-medium">
-                هنوز هیچ فیش ساتنا یا چک صیادی توسط مشتری بارگذاری نشده است.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {booking.payments.map((p) => (
-                  <div
-                    key={p.id}
-                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/60 p-4"
-                  >
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-black text-slate-900 text-sm">
-                          {p.amount.toLocaleString("fa-IR")} تومان
-                        </span>
-                        <span className="rounded bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-800">
-                          {p.methodLabel}
-                        </span>
-                        <span
-                          className={`rounded px-2 py-0.5 text-[10px] font-bold ${
-                            p.status === "verified"
-                              ? "bg-emerald-100 text-emerald-800"
-                              : p.status === "pending_verification"
-                              ? "bg-amber-100 text-amber-800"
-                              : "bg-rose-100 text-rose-800"
-                          }`}
-                        >
-                          {p.statusLabel}
-                        </span>
+              return (
+                <div
+                  key={step.value}
+                  className={`rounded-xl border p-3 text-center transition-all ${
+                    isCurrent
+                      ? "border-indigo-600 bg-indigo-50/80 text-indigo-900 shadow-xs font-black"
+                      : isPassed
+                      ? "border-emerald-300 bg-emerald-50/60 text-emerald-800 font-bold"
+                      : "border-slate-200 bg-slate-50/60 text-slate-400 opacity-60 font-medium"
+                  }`}
+                >
+                  <div className="flex justify-center mb-1.5">
+                    {isPassed ? (
+                      <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                    ) : isCurrent ? (
+                      <div className="h-4 w-4 rounded-full bg-indigo-600 text-white text-[10px] font-bold flex items-center justify-center">
+                        {toPersianDigits(idx + 1)}
                       </div>
-                      <p className="text-xs text-slate-600">
-                        {p.bankName ? `بانک مقصد: ${p.bankName} • ` : ""}
-                        {p.trackingCode ? `کد رهگیری بانکی: ${p.trackingCode} • ` : ""}
-                        {p.checkSayadId ? `شناسه صیادی چک: ${p.checkSayadId} • ` : ""}
-                        <span>ثبت در: {p.submittedAt}</span>
-                      </p>
-                      {p.notes && (
-                        <p className="text-[11px] text-slate-500 italic">
-                          توضیحات واریزکننده: {p.notes}
-                        </p>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleSecureDownload(p.id)}
-                        className="flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-3 py-1.5 text-xs font-bold text-indigo-700 hover:bg-indigo-50 transition-colors"
-                      >
-                        <Download className="h-3.5 w-3.5" />
-                        <span>دانلود تصویر فیش واریز</span>
-                      </button>
-                    </div>
+                    ) : (
+                      <div className="h-4 w-4 rounded-full border border-slate-300 text-slate-400 text-[10px] font-medium flex items-center justify-center">
+                        {toPersianDigits(idx + 1)}
+                      </div>
+                    )}
                   </div>
-                ))}
-              </div>
-            )}
+                  <span className="block text-xs">{step.label}</span>
+                </div>
+              );
+            })}
           </div>
+        </div>
+      )}
 
-          {/* اسناد رسمی پرونده (پیش‌فاکتور، قرارداد، حواله نصب) */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs space-y-4">
-            <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
-              <FileText className="h-4 w-4 text-indigo-600" />
-              <span>مستندات و پیش‌فاکتورهای رسمی سامانه</span>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* ستون راست (۲ بخش): اطلاعات پرونده، مدارک، لاگ‌ها */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* مشخصات خریدار و سازه */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs space-y-4">
+            <h3 className="text-xs font-bold text-slate-900 flex items-center gap-2 border-b border-slate-100 pb-3">
+              <Building2 className="h-4 w-4 text-indigo-600" />
+              <span>مشخصات خریدار و سازه تبلیغاتی</span>
             </h3>
 
-            {booking.documents.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-slate-200 p-6 text-center text-xs text-slate-400 font-medium">
-                سندی برای این رزرو صادر نشده است.
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+              {/* خریدار */}
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 space-y-1.5">
+                <span className="text-slate-400 font-semibold block">خریدار (مشتری):</span>
+                <div className="flex items-center gap-2 font-bold text-slate-900 text-sm">
+                  <User className="h-4 w-4 text-slate-500" />
+                  <span>{booking.user?.name || "—"}</span>
+                </div>
+                {booking.user?.phone && (
+                  <p className="text-slate-600 font-mono text-xs">
+                    {toPersianDigits(booking.user.phone)}
+                  </p>
+                )}
+                {booking.user_id && (
+                  <Link
+                    href={`/admin/bookings?client_id=${booking.user_id}`}
+                    className="inline-block text-[11px] font-bold text-indigo-600 hover:underline pt-1"
+                  >
+                    مشاهده سایر رزروهای این کاربر ←
+                  </Link>
+                )}
               </div>
+
+              {/* سازه */}
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 space-y-1.5">
+                <span className="text-slate-400 font-semibold block">سازه انتخابی:</span>
+                <Link
+                  href={`/structures/${booking.structure?.uuid || booking.structure_id || booking.structure?.id}`}
+                  className="font-bold text-indigo-600 hover:underline text-sm block truncate"
+                  title={booking.structure?.title}
+                >
+                  {booking.structure?.title || `سازه #${booking.structure_id}`}
+                </Link>
+                {booking.structure?.address && (
+                  <p className="text-slate-500 text-[11px] leading-relaxed truncate">
+                    {booking.structure.address}
+                  </p>
+                )}
+              </div>
+
+              {/* بازه اکران */}
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 space-y-1">
+                <span className="text-slate-400 font-semibold block">بازه تاریخی اکران:</span>
+                <div className="flex items-center gap-1.5 font-bold text-slate-800 text-xs">
+                  <Calendar className="h-3.5 w-3.5 text-indigo-600" />
+                  <span>
+                    از {formatJalali(booking.start_date)} تا {formatJalali(booking.end_date)}
+                  </span>
+                </div>
+              </div>
+
+              {/* مبلغ کل قرارداد */}
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 space-y-1">
+                <span className="text-slate-400 font-semibold block">مبلغ کل قرارداد:</span>
+                <div className="flex items-center gap-1.5 font-black text-slate-900 text-sm">
+                  <CreditCard className="h-4 w-4 text-emerald-600" />
+                  <span>{formatToman(booking.total_amount)}</span>
+                </div>
+              </div>
+
+              {/* شناسه پرداخت */}
+              {booking.payment_reference && (
+                <div className="sm:col-span-2 p-3 rounded-xl bg-indigo-50/50 border border-indigo-100 text-xs">
+                  <span className="text-indigo-700 font-semibold block mb-0.5">
+                    شناسه رهگیری واریز / فیش صیادی:
+                  </span>
+                  <span className="font-mono font-black text-slate-900 text-sm">
+                    {booking.payment_reference}
+                  </span>
+                </div>
+              )}
+
+              {/* مهلت قفل */}
+              {booking.locked_until && booking.status?.value === "locked_for_contract" && (
+                <div className="sm:col-span-2 p-3 rounded-xl bg-amber-50/60 border border-amber-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-amber-800 font-bold">
+                    <Clock className="h-4 w-4" />
+                    <span>مهلت قفل پرونده ۴۸ ساعته:</span>
+                  </div>
+                  <LockCountdown
+                    lockedUntil={booking.locked_until}
+                    isLockExpired={booking.is_lock_expired || false}
+                    statusValue={booking.status?.value}
+                    onExpired={() => refetchBooking()}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* لیست اسناد و مدارک پرونده */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs space-y-3">
+            <h3 className="text-xs font-bold text-slate-900 flex items-center gap-2 border-b border-slate-100 pb-3">
+              <FileText className="h-4 w-4 text-indigo-600" />
+              <span>اسناد، پیش‌فاکتورها و مدارک پیوست</span>
+            </h3>
+
+            {documentsList.length === 0 ? (
+              <p className="text-xs text-slate-400 py-4 text-center">
+                هنوز هیچ مدرکی (پیش‌فاکتور یا فیش پرداخت) برای این پرونده بارگذاری نشده است.
+              </p>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {booking.documents.map((doc) => (
+              <div className="divide-y divide-slate-100">
+                {documentsList.map((doc) => (
                   <div
                     key={doc.id}
-                    className="flex items-center justify-between rounded-xl border border-slate-200 p-3 hover:bg-slate-50 transition-colors"
+                    className="py-3 flex items-center justify-between gap-3 text-xs"
                   >
-                    <div className="flex items-center gap-2.5 truncate">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
+                    <div className="min-w-0 flex items-center gap-2.5">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 font-bold">
                         <FileText className="h-4 w-4" />
                       </div>
-                      <div className="truncate">
-                        <span className="text-xs font-bold text-slate-900 block truncate">
-                          {doc.title}
-                        </span>
-                        <span className="text-[10px] text-slate-400 font-medium">
-                          {doc.typeLabel} • {doc.fileSize}
-                        </span>
+                      <div className="min-w-0">
+                        <p className="font-bold text-slate-900 truncate">
+                          {doc.original_filename || `سند #${doc.id}`}
+                        </p>
+                        <p className="text-[11px] text-slate-400">
+                          {doc.document_type || "مدرک"} •{" "}
+                          {doc.file_size
+                            ? `${(doc.file_size / 1024).toFixed(1)} KB`
+                            : "—"}{" "}
+                          • {formatJalali(doc.created_at)}
+                        </p>
                       </div>
                     </div>
 
                     <button
                       type="button"
-                      onClick={() => handleSecureDownload(doc.id)}
-                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-indigo-600 hover:text-white transition-colors"
-                      title="دانلود امن فایل"
+                      onClick={() => handleDownloadDoc(doc.id)}
+                      disabled={downloadingDocId === doc.id}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 disabled:opacity-50 rounded-xl transition-colors cursor-pointer"
                     >
-                      <Download className="h-4 w-4" />
+                      {downloadingDocId === doc.id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Download className="h-3.5 w-3.5" />
+                      )}
+                      <span>دانلود امن</span>
                     </button>
                   </div>
                 ))}
@@ -614,258 +573,330 @@ export default function AdminBookingActionCenterView({
             )}
           </div>
 
-          {/* لاگ بازرسی و تاریخچه گردش‌کار (Audit Trail Table - GET /logs) */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
-                <History className="h-4 w-4 text-indigo-600" />
-                <span>گزارش کامل رویدادها و لاگ‌های بازرسی (Audit Trail)</span>
-              </h3>
-              <span className="text-xs text-slate-400 font-medium">
-                {logs.length.toLocaleString("fa-IR")} رویداد ثبت شده
-              </span>
-            </div>
+          {/* تاریخچه و لاگ‌های حسابرسی (Audit Trail) */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs space-y-3">
+            <h3 className="text-xs font-bold text-slate-900 flex items-center gap-2 border-b border-slate-100 pb-3">
+              <History className="h-4 w-4 text-indigo-600" />
+              <span>تاریخچه تغییرات و لاگ‌های حسابرسی (Audit Trail)</span>
+            </h3>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-right text-xs">
-                <thead>
-                  <tr className="border-b border-slate-100 bg-slate-50/70 text-slate-500 font-bold">
-                    <th className="py-2.5 px-3">مجری / کاربر</th>
-                    <th className="py-2.5 px-3">عنوان اقدام</th>
-                    <th className="py-2.5 px-3">وضعیت قبلی / جدید</th>
-                    <th className="py-2.5 px-3">زمان ثبت</th>
-                    <th className="py-2.5 px-3">توضیحات و یادداشت</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                  {logs.map((log) => (
-                    <tr key={log.id} className="hover:bg-slate-50/60">
-                      <td className="py-2.5 px-3 font-bold text-slate-900 whitespace-nowrap">
-                        {log.actor}
-                      </td>
-                      <td className="py-2.5 px-3 font-semibold text-indigo-700">
-                        {log.action}
-                      </td>
-                      <td className="py-2.5 px-3 text-[11px] font-mono whitespace-nowrap">
-                        {log.previousStatus ? (
-                          <span>
-                            {log.previousStatus} &larr; {log.newStatus}
+            {logsList.length === 0 ? (
+              <p className="text-xs text-slate-400 py-4 text-center">
+                هنوز لاگ تغییری برای این پرونده ثبت نشده است.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {logsList.map((log) => (
+                  <div
+                    key={log.id}
+                    className="p-3 rounded-xl bg-slate-50 border border-slate-100 text-xs space-y-1.5"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px]">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-700">
+                          نقش: {log.user_role || "سیستم"}
+                        </span>
+                        {log.changed_by_user_id && (
+                          <span className="text-slate-400">
+                            (شناسه کاربر: {toPersianDigits(log.changed_by_user_id)})
                           </span>
-                        ) : (
-                          <span>{log.newStatus}</span>
                         )}
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-400 text-[11px] whitespace-nowrap">
-                        {log.timestamp}
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-500 text-[11px] max-w-xs truncate">
-                        {log.note || "-"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                      </div>
+                      <span className="text-slate-400 font-mono">
+                        {formatJalali(log.created_at)}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2 font-bold text-slate-900">
+                      <span>{log.from_status?.label || "شروع"}</span>
+                      <span className="text-slate-300">←</span>
+                      <span className="text-indigo-600">{log.to_status?.label}</span>
+                    </div>
+
+                    {log.note && (
+                      <p className="text-slate-600 bg-white p-2 rounded-lg border border-slate-200/60 leading-relaxed">
+                        {log.note}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
-        {/* ستون چپ (۱ واحد): اطلاعات مشتری و فرآیند پرونده */}
-        <div className="space-y-6">
-          {/* کارت مشخصات مشتری */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs space-y-4">
-            <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
-              <User className="h-4 w-4 text-indigo-600" />
-              <span>اطلاعات مشتری و طرف قرارداد</span>
-            </h3>
-
-            <div className="space-y-3 text-xs">
-              <div className="flex justify-between items-center py-1.5 border-b border-slate-100">
-                <span className="text-slate-500">نام و عنوان برند:</span>
-                <span className="font-bold text-slate-900">{brandName}</span>
-              </div>
-              <div className="flex justify-between items-center py-1.5 border-b border-slate-100">
-                <span className="text-slate-500">شخص رابط:</span>
-                <span className="font-bold text-slate-900">{customerName}</span>
-              </div>
-              <div className="flex justify-between items-center py-1.5 border-b border-slate-100">
-                <span className="text-slate-500">شماره تماس:</span>
-                <span className="font-mono font-bold text-slate-900">{phone || "ثبت نشده"}</span>
-              </div>
-              <div className="flex justify-between items-center py-1.5 border-b border-slate-100">
-                <span className="text-slate-500">شناسه پرونده:</span>
-                <span className="font-mono font-bold text-slate-900">{booking.id}</span>
-              </div>
-              <div className="flex justify-between items-center py-1.5">
-                <span className="text-slate-500">کد پیگیری سیستمی:</span>
-                <span className="font-mono font-bold text-indigo-700">{booking.trackingCode}</span>
-              </div>
+        {/* ستون چپ: پنل عملیات مجاز (Action Panel - کاملاً مبتنی بر allowed_actions) */}
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs space-y-4 sticky top-20">
+            <div className="border-b border-slate-100 pb-3">
+              <h3 className="text-xs font-bold text-slate-900">
+                مرکز عملیات و اختیارات ادمین
+              </h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                دکمه‌ها منحصراً بر اساس ماشین وضعیت و اختیارات سرور فعال می‌شوند
+              </p>
             </div>
-          </div>
 
-          {/* تایم‌لاین مراحل چرخه عمر رزرو */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs space-y-4">
-            <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
-              <Clock className="h-4 w-4 text-indigo-600" />
-              <span>تایم‌لاین گردش‌کار پرونده</span>
-            </h3>
+            {allowedActions.length === 0 ? (
+              <div className="py-8 text-center text-xs text-slate-400 space-y-1">
+                <AlertCircle className="h-6 w-6 text-slate-300 mx-auto mb-1" />
+                <p className="font-semibold text-slate-600">
+                  در حال حاضر هیچ اقدام مجازی برای این پرونده در دسترس نیست.
+                </p>
+                <p className="text-[11px] text-slate-400">
+                  (اقدام توسط طرف مقابل پرونده یا تکمیل فرایند)
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {/* ۱. lock_for_contract */}
+                {allowedActions.includes("lock_for_contract") && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveModal("lock")}
+                    disabled={isSubmitting}
+                    className="w-full h-11 px-4 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-xl transition-all shadow-xs hover:shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <Clock className="h-4 w-4" />
+                    <span>تأیید اولیه و قفل قرارداد</span>
+                  </button>
+                )}
 
-            <div className="relative border-r border-slate-200 mr-2 space-y-4 pr-4">
-              {booking.timeline.map((item) => (
-                <div key={item.id} className="relative">
-                  <span
-                    className={`absolute -right-[23px] top-1 h-3.5 w-3.5 rounded-full border-2 border-white ${
-                      item.isDone
-                        ? "bg-emerald-500 ring-2 ring-emerald-100"
-                        : "bg-slate-300"
-                    }`}
-                  />
-                  <div>
-                    <h5 className="text-xs font-bold text-slate-900">
-                      {item.title}
-                    </h5>
-                    <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed font-medium">
-                      {item.description}
+                {/* ۲. issue_proforma */}
+                {allowedActions.includes("issue_proforma") && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveModal("proforma")}
+                    disabled={isSubmitting}
+                    className="w-full h-11 px-4 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-xl transition-all shadow-xs hover:shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <FileText className="h-4 w-4" />
+                    <span>صدور پیش‌فاکتور</span>
+                  </button>
+                )}
+
+                {/* ۳. approve_payment */}
+                {allowedActions.includes("approve_payment") && (
+                  <div className="space-y-1.5">
+                    <p className="text-[11px] text-amber-700 font-semibold bg-amber-50 p-2 rounded-lg border border-amber-200 flex items-center gap-1.5">
+                      <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                      <span>ابتدا مدارک پرداخت را بررسی کنید.</span>
                     </p>
-                    <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-1 font-medium">
-                      <span>مجری: {item.actor}</span>
-                      <span>•</span>
-                      <span>{item.timestamp}</span>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActiveModal("approve")}
+                      disabled={isSubmitting}
+                      className="w-full h-11 px-4 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-xl transition-all shadow-xs hover:shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      <span>تأیید پرداخت و شروع اکران</span>
+                    </button>
                   </div>
-                </div>
-              ))}
-            </div>
+                )}
+
+                {/* ۴. reject */}
+                {allowedActions.includes("reject") && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveModal("reject")}
+                    disabled={isSubmitting}
+                    className="w-full h-11 px-4 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 disabled:opacity-50 rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <X className="h-4 w-4" />
+                    <span>رد درخواست</span>
+                  </button>
+                )}
+
+                {/* ۵. complete */}
+                {allowedActions.includes("complete") && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveModal("complete")}
+                    disabled={isSubmitting}
+                    className="w-full h-11 px-4 text-xs font-bold text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-300 disabled:opacity-50 rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                    <span>پایان دوره اکران</span>
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* ۱. مودال تایید اولیه و قفل ۴۸ ساعته */}
-      {lockModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl space-y-4 text-right">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
-                <Lock className="h-4 w-4 text-blue-600" />
-                <span>تایید اولیه و قفل ۴۸ ساعته سازه</span>
-              </h3>
+      {/* ============================================================== */}
+      {/* مودال‌های عملیاتی دیالوگ */}
+      {/* ============================================================== */}
+
+      {/* مودال ۱: قفل قرارداد */}
+      {activeModal === "lock" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h4 className="text-sm font-bold text-slate-900">
+                تأیید اولیه و قفل قرارداد
+              </h4>
               <button
                 type="button"
-                onClick={() => setLockModalOpen(false)}
-                className="text-slate-400 hover:text-slate-700"
+                onClick={closeModal}
+                disabled={isSubmitting}
+                className="text-slate-400 hover:text-slate-600"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
-            <p className="text-xs text-slate-600 leading-relaxed font-medium">
-              آیا از تایید اولیه این رزرو و اعمال قفل اختصاصی ۴۸ ساعته برای سازه{" "}
-              <strong className="text-slate-900 font-bold">{booking.structure.code}</strong> اطمینان دارید؟ در این مدت سازه از دسترس سایر مشتریان خارج خواهد شد تا مشتری مراحل پیش‌فاکتور و واریز وجه را انجام دهد.
-            </p>
-
-            <div className="rounded-xl bg-blue-50 p-3 text-xs text-blue-800 font-medium">
-              ⏱ مهلت ۴۸ ساعته تا تاریخ دو روز آینده محاسبه و ثبت خواهد گردید.
+            <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl text-xs text-indigo-900 leading-relaxed">
+              سازه ۴۸ ساعت قفل می‌شود. در این بازه، دیگر متقاضیان امکان رزرو تداخل‌دار نخواهند داشت.
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setLockModalOpen(false)}
-                className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50"
-              >
-                انصراف
-              </button>
-              <button
-                type="button"
-                onClick={handleLock}
-                disabled={actionLoading}
-                className="rounded-xl bg-blue-600 px-5 py-2 text-xs font-bold text-white hover:bg-blue-700 transition-colors disabled:opacity-50"
-              >
-                {actionLoading ? "در حال ثبت قفل..." : "تایید و اعمال قفل ۴۸ ساعته"}
-              </button>
-            </div>
+            <form onSubmit={handleLockSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  یادداشت ادمین (اختیاری)
+                </label>
+                <textarea
+                  rows={3}
+                  value={actionNote}
+                  onChange={(e) => setActionNote(e.target.value)}
+                  placeholder="توضیحات و شرایط مورد نظر جهت ثبت در پرونده..."
+                  className="w-full p-3 rounded-xl border border-slate-200 text-xs focus:border-indigo-500 focus:outline-none"
+                />
+                {fieldErrors.note && (
+                  <p className="text-[11px] text-rose-600 mt-1">{fieldErrors.note}</p>
+                )}
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  disabled={isSubmitting}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
+                >
+                  انصراف
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-xl flex items-center gap-1.5"
+                >
+                  {isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  <span>تأیید و اعمال قفل</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
 
-      {/* ۲. مودال صدور و آپلود پیش‌فاکتور رسمی */}
-      {proformaModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl space-y-4 text-right">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
-                <FileText className="h-4 w-4 text-indigo-600" />
-                <span>صدور و بارگذاری پیش‌فاکتور رسمی</span>
-              </h3>
+      {/* مودال ۲: صدور پیش‌فاکتور با آپلود فایل الزامی */}
+      {activeModal === "proforma" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h4 className="text-sm font-bold text-slate-900">
+                صدور و بارگذاری پیش‌فاکتور
+              </h4>
               <button
                 type="button"
-                onClick={() => setProformaModalOpen(false)}
-                className="text-slate-400 hover:text-slate-700"
+                onClick={closeModal}
+                disabled={isSubmitting}
+                className="text-slate-400 hover:text-slate-600"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
-            <form onSubmit={handleIssueProforma} className="space-y-4 text-xs">
+            <form onSubmit={handleProformaSubmit} className="space-y-4">
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  شماره رسمی پیش‌فاکتور *
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  فایل پیش‌فاکتور رسمی (الزامی: PDF یا تصویر، حداکثر ۱۰MB)
                 </label>
-                <input
-                  type="text"
-                  required
-                  value={invoiceNumber}
-                  onChange={(e) => setInvoiceNumber(e.target.value)}
-                  placeholder="PF-1403-1029"
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 font-mono text-xs text-slate-900 focus:bg-white focus:border-indigo-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  مبلغ پیش‌فاکتور (تومان) *
-                </label>
-                <input
-                  type="number"
-                  required
-                  value={invoiceAmount}
-                  onChange={(e) => setInvoiceAmount(Number(e.target.value))}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 font-mono text-xs text-slate-900 focus:bg-white focus:border-indigo-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  لینک فایل رسمی PDF پیش‌فاکتور یا شناسه فایل
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={invoiceFileUrl}
-                    onChange={(e) => setInvoiceFileUrl(e.target.value)}
-                    placeholder="https://oohaiplatform.ir/storage/invoices/pf-9120.pdf"
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pr-8 pl-3 font-mono text-xs text-slate-900 focus:bg-white focus:border-indigo-500 focus:outline-none"
-                  />
-                  <Upload className="absolute right-2.5 top-3 h-3.5 w-3.5 text-slate-400" />
+                <div className="mt-1 flex justify-center px-4 pt-4 pb-4 border-2 border-slate-300 border-dashed rounded-xl hover:border-indigo-400 transition-colors">
+                  <div className="space-y-1 text-center">
+                    <Upload className="mx-auto h-8 w-8 text-slate-400" />
+                    <div className="flex text-xs text-slate-600 justify-center">
+                      <label className="relative cursor-pointer font-bold text-indigo-600 hover:text-indigo-500">
+                        <span>انتخاب فایل پیش‌فاکتور</span>
+                        <input
+                          type="file"
+                          accept=".pdf,image/*"
+                          onChange={(e) => {
+                            if (e.target.files?.[0]) {
+                              setProformaFile(e.target.files[0]);
+                              setFieldErrors((prev) => ({ ...prev, document: "" }));
+                            }
+                          }}
+                          className="sr-only"
+                        />
+                      </label>
+                    </div>
+                    <p className="text-[10px] text-slate-400">PDF, PNG, JPG تا حداکثر ۱۰MB</p>
+                  </div>
                 </div>
-                <span className="text-[10px] text-slate-400 mt-1 block">
-                  در صورت خالی ماندن، پیش‌فاکتور استاندارد پلتفرم OOHAI به شکل خودکار تولید خواهد گردید.
-                </span>
+
+                {proformaFile && (
+                  <div className="mt-2 p-2.5 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-between text-xs">
+                    <div className="truncate min-w-0 pr-1">
+                      <span className="font-bold text-indigo-900 block truncate">
+                        {proformaFile.name}
+                      </span>
+                      <span className="text-[11px] text-indigo-700">
+                        {(proformaFile.size / 1024).toFixed(1)} KB
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setProformaFile(null)}
+                      className="text-rose-600 hover:text-rose-800 p-1"
+                      title="حذف فایل انتخابی"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+
+                {fieldErrors.document && (
+                  <p className="text-[11px] text-rose-600 mt-1 font-semibold">
+                    {fieldErrors.document}
+                  </p>
+                )}
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  یادداشت یا توضیحات پیش‌فاکتور (اختیاری)
+                </label>
+                <textarea
+                  rows={2}
+                  value={actionNote}
+                  onChange={(e) => setActionNote(e.target.value)}
+                  placeholder="شرایط تسویه، شماره حساب یا توضیحات..."
+                  className="w-full p-2.5 rounded-xl border border-slate-200 text-xs focus:border-indigo-500 focus:outline-none"
+                />
+                {fieldErrors.note && (
+                  <p className="text-[11px] text-rose-600 mt-1">{fieldErrors.note}</p>
+                )}
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => setProformaModalOpen(false)}
-                  className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                  onClick={closeModal}
+                  disabled={isSubmitting}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
                 >
                   انصراف
                 </button>
                 <button
                   type="submit"
-                  disabled={actionLoading}
-                  className="rounded-xl bg-indigo-600 px-5 py-2 text-xs font-bold text-white hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                  disabled={isSubmitting}
+                  className="px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-xl flex items-center gap-1.5"
                 >
-                  {actionLoading ? "در حال ثبت پیش‌فاکتور..." : "ثبت و ارسال به کارتابل مشتری"}
+                  {isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  <span>صدور و ارسال پیش‌فاکتور</span>
                 </button>
               </div>
             </form>
@@ -873,189 +904,190 @@ export default function AdminBookingActionCenterView({
         </div>
       )}
 
-      {/* ۳. مودال تایید نهایی پرداخت و مجوز اکران */}
-      {approvePaymentModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl space-y-4 text-right">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
-                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                <span>تایید نهایی پرداخت و مجوز اکران</span>
-              </h3>
+      {/* مودال ۳: تایید پرداخت */}
+      {activeModal === "approve" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h4 className="text-sm font-bold text-slate-900">
+                تأیید پرداخت و شروع اکران
+              </h4>
               <button
                 type="button"
-                onClick={() => setApprovePaymentModalOpen(false)}
-                className="text-slate-400 hover:text-slate-700"
+                onClick={closeModal}
+                disabled={isSubmitting}
+                className="text-slate-400 hover:text-slate-600"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
-            <p className="text-xs text-slate-600 leading-relaxed font-medium">
-              با تایید پرداخت، وضعیت پرونده به <strong className="text-emerald-700 font-bold">تایید شده / اکران</strong> ارتقا یافته و حواله نصب برای چاپخانه و مجری ارسال می‌گردد.
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 leading-relaxed font-semibold">
+              یادآوری: لطفاً پیش از تأیید نهایی، رسید واریز یا وضعیت چک صیادی را در بخش اسناد پرونده بررسی فرمایید.
+            </div>
+
+            <form onSubmit={handleApprovePaymentSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  یادداشت مالی / اداری (اختیاری)
+                </label>
+                <textarea
+                  rows={3}
+                  value={actionNote}
+                  onChange={(e) => setActionNote(e.target.value)}
+                  placeholder="توضیحات تأیید واریز یا شماره سند حسابداری..."
+                  className="w-full p-3 rounded-xl border border-slate-200 text-xs focus:border-indigo-500 focus:outline-none"
+                />
+                {fieldErrors.note && (
+                  <p className="text-[11px] text-rose-600 mt-1">{fieldErrors.note}</p>
+                )}
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  disabled={isSubmitting}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
+                >
+                  انصراف
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-xl flex items-center gap-1.5"
+                >
+                  {isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  <span>تأیید نهایی پرداخت و اکران</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* مودال ۴: رد درخواست */}
+      {activeModal === "reject" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h4 className="text-sm font-bold text-slate-900">
+                رد درخواست رزرو
+              </h4>
+              <button
+                type="button"
+                onClick={closeModal}
+                disabled={isSubmitting}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-500">
+              دلیل رد درخواست ثبت شده و به مشتری نمایش داده خواهد شد.
             </p>
 
-            <form onSubmit={handleApprovePayment} className="space-y-4 text-xs">
+            <form onSubmit={handleRejectSubmit} className="space-y-4">
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  یادداشت مدیر مالی / کد سند حسابداری (اختیاری)
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  دلیل رد پرونده (الزامی) *
                 </label>
                 <textarea
                   rows={3}
-                  value={financialApprovalNote}
-                  onChange={(e) => setFinancialApprovalNote(e.target.value)}
-                  placeholder="واریز وجه به حساب جام بانک ملت تایید شد. شماره سند: ACC-9941"
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs text-slate-900 focus:bg-white focus:border-emerald-500 focus:outline-none"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setApprovePaymentModalOpen(false)}
-                  className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50"
-                >
-                  انصراف
-                </button>
-                <button
-                  type="submit"
-                  disabled={actionLoading}
-                  className="rounded-xl bg-emerald-600 px-5 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition-colors disabled:opacity-50"
-                >
-                  {actionLoading ? "در حال تایید..." : "تایید مالی و صدور مجوز اکران"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ۴. مودال رد درخواست با فیلد اجباری علت */}
-      {rejectModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl space-y-4 text-right">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
-                <AlertCircle className="h-4 w-4 text-rose-600" />
-                <span>رد درخواست رزرو</span>
-              </h3>
-              <button
-                type="button"
-                onClick={() => setRejectModalOpen(false)}
-                className="text-slate-400 hover:text-slate-700"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleReject} className="space-y-4 text-xs">
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  علت رد درخواست (الزامی برای اطلاع مشتری) *
-                </label>
-                <textarea
-                  rows={4}
-                  required
-                  value={rejectionReason}
-                  onChange={(e) => setRejectionReason(e.target.value)}
-                  placeholder="مثال: عدم تایید طرح فرهنگی توسط اداره کل فرهنگ و ارشاد اسلامی / تداخل بازه اکران با کمپین ملی..."
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs text-slate-900 focus:bg-white focus:border-rose-500 focus:outline-none"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setRejectModalOpen(false)}
-                  className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50"
-                >
-                  انصراف
-                </button>
-                <button
-                  type="submit"
-                  disabled={actionLoading}
-                  className="rounded-xl bg-rose-600 px-5 py-2 text-xs font-bold text-white hover:bg-rose-700 transition-colors disabled:opacity-50"
-                >
-                  {actionLoading ? "در حال ثبت رد..." : "تایید رد درخواست رزرو"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ۵. مودال تغییر وضعیت دستی توسط اپراتور */}
-      {transitionModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl space-y-4 text-right">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
-                <History className="h-4 w-4 text-indigo-600" />
-                <span>تغییر وضعیت دستی (ماشین حالت)</span>
-              </h3>
-              <button
-                type="button"
-                onClick={() => setTransitionModalOpen(false)}
-                className="text-slate-400 hover:text-slate-700"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleTransition} className="space-y-4 text-xs">
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  وضعیت مقصد *
-                </label>
-                <select
-                  required
-                  value={newStatusValue}
+                  value={rejectReason}
                   onChange={(e) => {
-                    setNewStatusValue(e.target.value);
-                    const opt = e.target.selectedOptions[0];
-                    if (opt) setNewStatusLabel(opt.text);
+                    setRejectReason(e.target.value);
+                    if (fieldErrors.reason) setFieldErrors((prev) => ({ ...prev, reason: "" }));
                   }}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 text-xs text-slate-900 focus:bg-white focus:border-indigo-500 focus:outline-none"
-                >
-                  <option value="">انتخاب وضعیت جدید...</option>
-                  <option value="pending_review">در انتظار تایید اولیه</option>
-                  <option value="locked_for_contract">قفل ۴۸ ساعته سازه</option>
-                  <option value="proforma_issued">پیش‌فاکتور صادر شده</option>
-                  <option value="payment_submitted">فیش پرداخت ثبت شده</option>
-                  <option value="approved">تایید نهایی و مجوز اکران</option>
-                  <option value="active">در حال اکران روی سازه</option>
-                  <option value="completed">پایان دوره اکران</option>
-                  <option value="rejected">رد شده</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  یادداشت تغییر وضعیت (در لاگ بازرسی ثبت می‌شود)
-                </label>
-                <textarea
-                  rows={3}
-                  value={transitionNote}
-                  onChange={(e) => setTransitionNote(e.target.value)}
-                  placeholder="تغییر دستی وضعیت بر اساس هماهنگی تلفنی با متقاضی..."
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs text-slate-900 focus:bg-white focus:border-indigo-500 focus:outline-none"
+                  placeholder="علت رد درخواست (مثال: عدم تایید طرح فرهنگی، پر بودن بازه زمانی، نقص مدارک...)"
+                  className="w-full p-3 rounded-xl border border-slate-200 text-xs focus:border-rose-500 focus:outline-none"
                 />
+                {fieldErrors.reason && (
+                  <p className="text-[11px] text-rose-600 mt-1 font-semibold">
+                    {fieldErrors.reason}
+                  </p>
+                )}
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <div className="flex items-center justify-end gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => setTransitionModalOpen(false)}
-                  className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                  onClick={closeModal}
+                  disabled={isSubmitting}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
                 >
                   انصراف
                 </button>
                 <button
                   type="submit"
-                  disabled={actionLoading}
-                  className="rounded-xl bg-slate-900 px-5 py-2 text-xs font-bold text-white hover:bg-slate-800 transition-colors disabled:opacity-50"
+                  disabled={isSubmitting}
+                  className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-50 rounded-xl flex items-center gap-1.5"
                 >
-                  {actionLoading ? "در حال اعمال..." : "ثبت انتقال وضعیت"}
+                  {isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  <span>ثبت و رد درخواست</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* مودال ۵: پایان دوره اکران */}
+      {activeModal === "complete" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h4 className="text-sm font-bold text-slate-900">
+                پایان دوره اکران سازه
+              </h4>
+              <button
+                type="button"
+                onClick={closeModal}
+                disabled={isSubmitting}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              با این اقدام، پرونده رزرو به وضعیت «پایان‌یافته» (completed) منتقل شده و دوره اکران آن خاتمه می‌یابد.
+            </p>
+
+            <form onSubmit={handleCompleteSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  یادداشت تکمیل پرونده (اختیاری)
+                </label>
+                <textarea
+                  rows={2}
+                  value={actionNote}
+                  onChange={(e) => setActionNote(e.target.value)}
+                  placeholder="گزارش پایان اکران یا یادداشت پایانی..."
+                  className="w-full p-2.5 rounded-xl border border-slate-200 text-xs focus:border-indigo-500 focus:outline-none"
+                />
+                {fieldErrors.note && (
+                  <p className="text-[11px] text-rose-600 mt-1">{fieldErrors.note}</p>
+                )}
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  disabled={isSubmitting}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
+                >
+                  انصراف
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="px-4 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-black disabled:opacity-50 rounded-xl flex items-center gap-1.5"
+                >
+                  {isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  <span>تأیید و پایان اکران</span>
                 </button>
               </div>
             </form>

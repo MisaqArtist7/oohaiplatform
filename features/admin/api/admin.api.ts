@@ -1,434 +1,376 @@
-import {
-  AdminBooking,
-  AdminBookingFilterParams,
-  AdminMediaOwnerRequest,
-  AdminRole,
+import { http } from "@/shared/lib/http";
+import type {
+  Booking,
+  BookingLog,
   AdminUser,
-  BookingAuditLog,
+  UserRoleValue,
+  AdminBookingFilters,
+  AdminUserFilters,
+  Page,
+  AdminMediaOwnerRequest,
 } from "../types";
-import {
-  adminBookingsStore,
-  adminAuditLogsStore,
-  adminMediaOwnerRequestsStore,
-  adminUsersStore,
-  initialAdminRoles,
-  lockAdminBooking,
-  issueAdminProforma,
-  approveAdminPayment,
-  rejectAdminBooking,
-  transitionAdminBookingStatus,
-  approveMediaOwnerApplication,
-  rejectMediaOwnerApplication,
-  assignRoleToUser,
-  removeRoleFromUser,
-} from "@/lib/admin-dashboard-data";
+
 
 /**
- * دریافت لیست رزروها با فیلترهای پیشرفته
+ * آداپتر نرمال‌سازی پاسخ‌های صفحه‌بندی‌شده به فرم استاندارد Page<T>
  */
-export async function getAdminBookings(
-  filters?: AdminBookingFilterParams
-): Promise<{ success: boolean; data: AdminBooking[]; total: number }> {
-  try {
-    const params = new URLSearchParams();
-    if (filters?.status && filters.status !== "all") params.set("status", filters.status);
-    if (filters?.customer) params.set("customer", filters.customer);
-    if (filters?.structure) params.set("structure", filters.structure);
-    if (filters?.startDate) params.set("startDate", filters.startDate);
-    if (filters?.endDate) params.set("endDate", filters.endDate);
-    if (filters?.search) params.set("search", filters.search);
+function normalizePageResponse<T>(res: unknown): Page<T> {
+  if (!res || typeof res !== "object") {
+    return { data: [] };
+  }
 
-    const queryString = params.toString() ? `?${params.toString()}` : "";
-    const res = await fetch(`/api/v1/admin/bookings${queryString}`, {
-      cache: "no-store",
-    });
+  const obj = res as Record<string, unknown>;
 
-    if (res.ok) {
-      return await res.json();
+  // اگر پاسخ مستقیماً آرایه باشد
+  if (Array.isArray(res)) {
+    return {
+      data: res as T[],
+      meta: {
+        current_page: 1,
+        last_page: 1,
+        per_page: res.length,
+        total: res.length,
+      },
+    };
+  }
+
+  // اگر داده در obj.data.data باشد (تودرتو در لاراول)
+  if (obj.data && typeof obj.data === "object" && !Array.isArray(obj.data)) {
+    const nested = obj.data as Record<string, unknown>;
+    if (Array.isArray(nested.data)) {
+      return {
+        data: nested.data as T[],
+        meta: (nested.meta || {
+          current_page: Number(nested.current_page || 1),
+          last_page: Number(nested.last_page || 1),
+          per_page: Number(nested.per_page || nested.data.length || 15),
+          total: Number(nested.total || nested.data.length),
+        }) as Page<T>["meta"],
+        links: nested.links as Page<T>["links"],
+      };
     }
-  } catch {
-    // خطای شبکه یا رندر محلی، از استور محلی استفاده می‌کنیم
   }
 
-  // فیلتر کلاینت‌ساید به عنوان فال‌بک
-  let list = [...adminBookingsStore];
-  if (filters?.status && filters.status !== "all") {
-    list = list.filter((b) => b.status.value === filters.status);
-  }
-  if (filters?.customer) {
-    const q = filters.customer.toLowerCase();
-    list = list.filter((b) => {
-      const cName = (b.customer?.fullName || b.contactPerson || "").toLowerCase();
-      const comp = (b.customer?.companyName || b.brandName || "").toLowerCase();
-      return cName.includes(q) || comp.includes(q);
-    });
-  }
-  if (filters?.structure) {
-    const q = filters.structure.toLowerCase();
-    list = list.filter(
-      (b) =>
-        b.structure.title.toLowerCase().includes(q) ||
-        b.structure.code.toLowerCase().includes(q)
-    );
-  }
-  if (filters?.search) {
-    const q = filters.search.toLowerCase();
-    list = list.filter((b) => {
-      const cName = (b.customer?.fullName || b.contactPerson || "").toLowerCase();
-      const comp = (b.customer?.companyName || b.brandName || "").toLowerCase();
-      return (
-        b.trackingCode.toLowerCase().includes(q) ||
-        cName.includes(q) ||
-        comp.includes(q) ||
-        b.structure.title.toLowerCase().includes(q)
-      );
-    });
+  // حالت استاندارد: { data: [...], meta: {...}, links: {...} }
+  if (Array.isArray(obj.data)) {
+    const metaObj = (obj.meta && typeof obj.meta === "object") ? (obj.meta as Record<string, unknown>) : null;
+    return {
+      data: obj.data as T[],
+      meta: {
+        current_page: Number(metaObj?.current_page || obj.current_page || 1),
+        last_page: Number(metaObj?.last_page || obj.last_page || 1),
+        per_page: Number(metaObj?.per_page || obj.per_page || (obj.data as unknown[]).length || 15),
+        total: Number(metaObj?.total || obj.total || (obj.data as unknown[]).length),
+        from: (metaObj?.from || obj.from) as number | undefined,
+        to: (metaObj?.to || obj.to) as number | undefined,
+      },
+      links: (obj.links || {}) as Page<T>["links"],
+    };
   }
 
-  return { success: true, data: list, total: list.length };
+  return { data: [] };
 }
 
 /**
- * دریافت اطلاعات کامل یک رزرو
+ * آداپتر تک آیتم جهت استخراج data در صورت وجود envelope
  */
-export async function getAdminBookingById(
-  bookingId: string
-): Promise<{ success: boolean; data?: AdminBooking; message?: string }> {
-  try {
-    const res = await fetch(`/api/v1/admin/bookings/${bookingId}`, {
-      cache: "no-store",
-    });
-    if (res.ok) {
-      return await res.json();
+function unwrapSingleItem<T>(res: unknown): T {
+  if (res && typeof res === "object" && "data" in res) {
+    const dataObj = (res as { data: unknown }).data;
+    if (dataObj && typeof dataObj === "object" && !Array.isArray(dataObj)) {
+      return dataObj as T;
     }
-  } catch {
-    // fallback
   }
+  return res as T;
+}
 
-  const booking = adminBookingsStore.find((b) => b.id === bookingId);
-  if (!booking) {
-    return { success: false, message: "رزرو مورد نظر در سامانه یافت نشد" };
-  }
-  return { success: true, data: booking };
+// ==========================================
+// ۱. وب‌سرویس‌های مدیریت رزروها (Admin Bookings)
+// ==========================================
+
+/**
+ * دریافت لیست رزروهای ادمین با فیلترهای استاندارد سند
+ * GET /api/v1/admin/bookings
+ */
+export async function listAdminBookings(
+  filters?: AdminBookingFilters
+): Promise<Page<Booking>> {
+  const query: Record<string, string | number | undefined> = {};
+  if (filters?.status && filters.status !== "all") query.status = filters.status;
+  if (filters?.structure_id) query.structure_id = filters.structure_id;
+  if (filters?.client_id) query.client_id = filters.client_id;
+  if (filters?.page) query.page = filters.page;
+
+  const res = await http.get<unknown>("/admin/bookings", { query });
+  return normalizePageResponse<Booking>(res);
 }
 
 /**
- * تایید اولیه و قفل ۴۸ ساعته سازه
+ * مشاهده جزییات کامل یک پرونده رزرو برای ادمین
+ * GET /api/v1/admin/bookings/{id}
  */
-export async function lockBookingSlot(
-  bookingId: string
-): Promise<{ success: boolean; data?: AdminBooking; message?: string }> {
-  try {
-    const res = await fetch(`/api/v1/admin/bookings/${bookingId}/lock`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-    });
-    if (res.ok) return await res.json();
-  } catch {
-    // fallback
-  }
-
-  const updated = lockAdminBooking(bookingId);
-  if (!updated) return { success: false, message: "رزرو یافت نشد" };
-  return {
-    success: true,
-    data: updated,
-    message: "قفل ۴۸ ساعته سازه اعمال شد و تایید اولیه صادر گردید.",
-  };
+export async function getAdminBooking(id: number | string): Promise<Booking> {
+  const res = await http.get<unknown>(`/admin/bookings/${encodeURIComponent(String(id))}`);
+  return unwrapSingleItem<Booking>(res);
 }
 
 /**
- * صدور و ثبت پیش‌فاکتور رسمی
+ * مشاهده تاریخچه و لاگ‌های حسابرسی یک پرونده رزرو (Audit Trail)
+ * GET /api/v1/admin/bookings/{id}/logs
  */
-export async function issueProformaInvoice(
-  bookingId: string,
-  payload: { invoiceNumber: string; amount: number; fileUrl?: string }
-): Promise<{ success: boolean; data?: AdminBooking; message?: string }> {
-  try {
-    const res = await fetch(`/api/v1/admin/bookings/${bookingId}/proforma`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    if (res.ok) return await res.json();
-  } catch {
-    // fallback
+export async function getAdminBookingLogs(id: number | string): Promise<BookingLog[]> {
+  const res = await http.get<unknown>(`/admin/bookings/${encodeURIComponent(String(id))}/logs`);
+  if (Array.isArray(res)) return res as BookingLog[];
+  if (res && typeof res === "object" && Array.isArray((res as Record<string, unknown>).data)) {
+    return (res as { data: BookingLog[] }).data;
   }
-
-  const updated = issueAdminProforma(
-    bookingId,
-    payload.invoiceNumber,
-    payload.amount,
-    payload.fileUrl
-  );
-  if (!updated) return { success: false, message: "رزرو یافت نشد" };
-  return {
-    success: true,
-    data: updated,
-    message: "پیش‌فاکتور رسمی با موفقیت صادر و بارگذاری شد.",
-  };
+  return [];
 }
 
 /**
- * تایید نهایی پرداخت و مجوز اکران توسط مدیر مالی
+ * تایید اولیه و اعمال قفل قرارداد ۴۸ ساعته
+ * POST /api/v1/admin/bookings/{id}/lock
  */
-export async function approvePaymentAndBroadcast(
-  bookingId: string,
-  approvalNote?: string
-): Promise<{ success: boolean; data?: AdminBooking; message?: string }> {
-  try {
-    const res = await fetch(`/api/v1/admin/bookings/${bookingId}/approve-payment`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ approvalNote }),
-    });
-    if (res.ok) return await res.json();
-  } catch {
-    // fallback
-  }
-
-  const updated = approveAdminPayment(bookingId, approvalNote);
-  if (!updated) return { success: false, message: "رزرو یافت نشد" };
-  return {
-    success: true,
-    data: updated,
-    message: "پرداخت تایید شد و دستور اکران نهایی صادر گردید.",
-  };
-}
-
-/**
- * رد درخواست رزرو با ذکر علت
- */
-export async function rejectBookingRequest(
-  bookingId: string,
-  reason: string
-): Promise<{ success: boolean; data?: AdminBooking; message?: string }> {
-  try {
-    const res = await fetch(`/api/v1/admin/bookings/${bookingId}/reject`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reason }),
-    });
-    if (res.ok) return await res.json();
-  } catch {
-    // fallback
-  }
-
-  const updated = rejectAdminBooking(bookingId, reason);
-  if (!updated) return { success: false, message: "رزرو یافت نشد" };
-  return {
-    success: true,
-    data: updated,
-    message: "درخواست رزرو رد شد و مراتب به مشتری اعلام گردید.",
-  };
-}
-
-/**
- * تغییر وضعیت دستی توسط اپراتور سیستم
- */
-export async function transitionBookingState(
-  bookingId: string,
-  status: string,
-  statusLabel?: string,
+export async function lockBooking(
+  id: number | string,
   note?: string
-): Promise<{ success: boolean; data?: AdminBooking; message?: string }> {
-  try {
-    const res = await fetch(`/api/v1/admin/bookings/${bookingId}/transition`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status, statusLabel, note }),
-    });
-    if (res.ok) return await res.json();
-  } catch {
-    // fallback
-  }
-
-  const updated = transitionAdminBookingStatus(bookingId, status, statusLabel, note);
-  if (!updated) return { success: false, message: "رزرو یافت نشد" };
-  return {
-    success: true,
-    data: updated,
-    message: `وضعیت رزرو به «${updated.status.label}» تغییر یافت.`,
-  };
+): Promise<{ message?: string; data?: unknown }> {
+  return http.post<{ message?: string; data?: unknown }>(
+    `/admin/bookings/${encodeURIComponent(String(id))}/lock`,
+    {
+      body: note?.trim() ? { note: note.trim() } : {},
+    }
+  );
 }
 
 /**
- * دریافت تاریخچه تغییرات و لاگ‌های بازرسی
+ * صدور و بارگذاری پیش‌فاکتور رسمی با فرمت Multipart/FormData
+ * POST /api/v1/admin/bookings/{id}/proforma
  */
-export async function getBookingAuditLogs(
-  bookingId: string
-): Promise<{ success: boolean; data: BookingAuditLog[] }> {
-  try {
-    const res = await fetch(`/api/v1/admin/bookings/${bookingId}/logs`, {
-      cache: "no-store",
-    });
-    if (res.ok) return await res.json();
-  } catch {
-    // fallback
+export async function issueProforma(
+  id: number | string,
+  file: File,
+  note?: string
+): Promise<{ message?: string; data?: unknown }> {
+  const formData = new FormData();
+  formData.append("document", file);
+  if (note?.trim()) {
+    formData.append("note", note.trim());
   }
 
-  const logs = adminAuditLogsStore.filter((l) => l.bookingId === bookingId);
-  return { success: true, data: logs };
+  // http به صورت خودکار با تشخیص FormData از قرار دادن دستی Content-Type خودداری می‌کند
+  return http.post<{ message?: string; data?: unknown }>(
+    `/admin/bookings/${encodeURIComponent(String(id))}/proforma`,
+    {
+      body: formData,
+    }
+  );
 }
 
 /**
- * دریافت لیست درخواست‌های همکاری مالکان رسانه
+ * تایید نهایی سند پرداخت و شروع اکران
+ * POST /api/v1/admin/bookings/{id}/approve-payment
  */
+export async function approvePayment(
+  id: number | string,
+  note?: string
+): Promise<{ message?: string; data?: unknown }> {
+  return http.post<{ message?: string; data?: unknown }>(
+    `/admin/bookings/${encodeURIComponent(String(id))}/approve-payment`,
+    {
+      body: note?.trim() ? { note: note.trim() } : {},
+    }
+  );
+}
+
+/**
+ * رد درخواست رزرو با ثبت دلیل اجباری
+ * POST /api/v1/admin/bookings/{id}/reject
+ */
+export async function rejectBooking(
+  id: number | string,
+  reason: string
+): Promise<{ message?: string; data?: unknown }> {
+  return http.post<{ message?: string; data?: unknown }>(
+    `/admin/bookings/${encodeURIComponent(String(id))}/reject`,
+    {
+      body: { reason: reason.trim() },
+    }
+  );
+}
+
+/**
+ * پایان دوره اکران سازه (انتقال وضعیت از occupied به completed)
+ * POST /api/v1/admin/bookings/{id}/transition
+ */
+export async function completeBooking(
+  id: number | string,
+  note?: string
+): Promise<{ message?: string; data?: unknown }> {
+  return http.post<{ message?: string; data?: unknown }>(
+    `/admin/bookings/${encodeURIComponent(String(id))}/transition`,
+    {
+      body: {
+        target_status: "completed",
+        ...(note?.trim() ? { note: note.trim() } : {}),
+      },
+    }
+  );
+}
+
+/**
+ * دریافت لینک دانلود امن و امضاشده مدارک و فیش‌ها برای ادمین
+ * GET /api/v1/admin/bookings/{id}/documents/{docId}/download
+ */
+export async function getAdminDocumentDownloadUrl(
+  id: number | string,
+  docId: number | string
+): Promise<{ download_url: string; expires_in_minutes?: number }> {
+  const res = await http.get<Record<string, unknown>>(
+    `/admin/bookings/${encodeURIComponent(String(id))}/documents/${encodeURIComponent(String(docId))}/download`
+  );
+
+  const download_url = (res?.download_url || res?.url || (res?.data as Record<string, unknown>)?.download_url || "") as string;
+  const expires_in_minutes = Number(res?.expires_in_minutes || (res?.data as Record<string, unknown>)?.expires_in_minutes || 15);
+
+  return { download_url, expires_in_minutes };
+}
+
+// ==========================================
+// ۲. وب‌سرویس‌های مدیریت کاربران و نقش‌ها (Admin Users & Roles)
+// ==========================================
+
+/**
+ * جستجو و واکشی لیست کاربران سیستم
+ * GET /api/v1/admin/users
+ */
+export async function listAdminUsers(
+  params?: AdminUserFilters
+): Promise<Page<AdminUser>> {
+  const query: Record<string, string | number | undefined> = {};
+  if (params?.search) query.search = params.search;
+  if (params?.page) query.page = params.page;
+  if (params?.per_page) query.per_page = params.per_page;
+
+  const res = await http.get<unknown>("/admin/users", { query });
+  return normalizePageResponse<AdminUser>(res);
+}
+
+/**
+ * مشاهده جزییات یک کاربر مشخص با uuid
+ * GET /api/v1/admin/users/{userUuid}
+ */
+export async function getAdminUser(userUuid: string): Promise<AdminUser> {
+  const res = await http.get<unknown>(`/admin/users/${encodeURIComponent(userUuid)}`);
+  return unwrapSingleItem<AdminUser>(res);
+}
+
+/**
+ * لیست نقش‌های فعال اختصاص‌یافته به یک کاربر
+ * GET /api/v1/admin/users/{userUuid}/roles
+ */
+export async function getUserRoles(userUuid: string): Promise<UserRoleValue[]> {
+  const res = await http.get<unknown>(`/admin/users/${encodeURIComponent(userUuid)}/roles`);
+
+  let rawList: unknown[] = [];
+  if (Array.isArray(res)) {
+    rawList = res;
+  } else if (res && typeof res === "object") {
+    const obj = res as Record<string, unknown>;
+    if (Array.isArray(obj.data)) {
+      rawList = obj.data;
+    } else if (Array.isArray(obj.roles)) {
+      rawList = obj.roles;
+    }
+  }
+
+  const validRoles: UserRoleValue[] = ["client", "media_owner", "super_admin"];
+  const extracted: UserRoleValue[] = [];
+
+  for (const item of rawList) {
+    let slug = "";
+    if (typeof item === "string") {
+      slug = item;
+    } else if (item && typeof item === "object") {
+      const o = item as Record<string, unknown>;
+      slug = String(o.slug || o.name || "");
+    }
+    if (validRoles.includes(slug as UserRoleValue) && !extracted.includes(slug as UserRoleValue)) {
+      extracted.push(slug as UserRoleValue);
+    }
+  }
+
+  return extracted;
+}
+
+/**
+ * اختصاص نقش به کاربر
+ * POST /api/v1/admin/users/{userUuid}/roles
+ */
+export async function assignRole(
+  userUuid: string,
+  role: UserRoleValue
+): Promise<{ message?: string; data?: unknown }> {
+  return http.post<{ message?: string; data?: unknown }>(
+    `/admin/users/${encodeURIComponent(userUuid)}/roles`,
+    {
+      body: { role },
+    }
+  );
+}
+
+/**
+ * سلب یک نقش از کاربر
+ * DELETE /api/v1/admin/users/{userUuid}/roles/{role}
+ */
+export async function removeRole(
+  userUuid: string,
+  role: UserRoleValue
+): Promise<{ message?: string; data?: unknown }> {
+  return http.delete<{ message?: string; data?: unknown }>(
+    `/admin/users/${encodeURIComponent(userUuid)}/roles/${encodeURIComponent(role)}`
+  );
+}
+
+// ==========================================
+// ۳. وب‌سرویس‌های درخواست‌های مالکان رسانه (مربوط به تسک ۱۰)
+// ==========================================
+
 export async function getAdminMediaOwnerRequests(): Promise<{
   success: boolean;
   data: AdminMediaOwnerRequest[];
 }> {
   try {
-    const res = await fetch(`/api/v1/admin/media-owner-requests`, {
-      cache: "no-store",
-    });
-    if (res.ok) {
-      const json = await res.json();
-      if (json && (json.data || Array.isArray(json))) {
-        return {
-          success: true,
-          data: Array.isArray(json) ? json : json.data,
-        };
-      }
+    const res = await http.get<{ success?: boolean; data?: AdminMediaOwnerRequest[] }>("/admin/media-owner-requests");
+    if (res && Array.isArray(res.data)) {
+      return { success: true, data: res.data };
     }
+    if (Array.isArray(res)) {
+      return { success: true, data: res as AdminMediaOwnerRequest[] };
+    }
+    return { success: true, data: [] };
   } catch {
-    // fallback
+    return { success: false, data: [] };
   }
-
-  return { success: true, data: [...adminMediaOwnerRequestsStore] };
 }
 
-/**
- * تایید درخواست مالک رسانه
- */
+
 export async function approveMediaOwnerRequest(
-  requestId: string
-): Promise<{ success: boolean; message?: string }> {
-  try {
-    const res = await fetch(`/api/v1/admin/media-owner-requests/${requestId}/approve`, {
-      method: "POST",
-    });
-    if (res.ok) return await res.json();
-  } catch {
-    // fallback
-  }
-
-  const updated = approveMediaOwnerApplication(requestId);
-  if (!updated) return { success: false, message: "درخواست یافت نشد" };
-  return {
-    success: true,
-    message: "درخواست احراز هویت شرکت با موفقیت تایید و دسترسی صادر شد.",
-  };
+  requestId: string | number
+): Promise<{ success: boolean; message: string }> {
+  return http.post<{ success: boolean; message: string }>(
+    `/admin/media-owner-requests/${encodeURIComponent(String(requestId))}/approve`
+  );
 }
 
-/**
- * رد درخواست مالک رسانه با ذکر دلیل
- */
 export async function rejectMediaOwnerRequest(
-  requestId: string,
+  requestId: string | number,
   reason: string
-): Promise<{ success: boolean; message?: string }> {
-  try {
-    const res = await fetch(`/api/v1/admin/media-owner-requests/${requestId}/reject`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rejection_reason: reason }),
-    });
-    if (res.ok) return await res.json();
-  } catch {
-    // fallback
-  }
-
-  const updated = rejectMediaOwnerApplication(requestId, reason);
-  if (!updated) return { success: false, message: "درخواست یافت نشد" };
-  return {
-    success: true,
-    message: "درخواست مالک رسانه رد شد.",
-  };
-}
-
-/**
- * دریافت لیست کاربران و نقش‌ها
- */
-export async function getAdminUsers(
-  searchQuery?: string
-): Promise<{ success: boolean; data: AdminUser[]; roles: AdminRole[] }> {
-  try {
-    const q = searchQuery ? `?search=${encodeURIComponent(searchQuery)}` : "";
-    const res = await fetch(`/api/v1/admin/users${q}`, {
-      cache: "no-store",
-    });
-    if (res.ok) return await res.json();
-  } catch {
-    // fallback
-  }
-
-  let list = [...adminUsersStore];
-  if (searchQuery) {
-    const q = searchQuery.toLowerCase();
-    list = list.filter(
-      (u) =>
-        (u.fullName || u.name).toLowerCase().includes(q) ||
-        u.email.toLowerCase().includes(q) ||
-        u.phone.includes(q) ||
-        (u.company ? u.company.toLowerCase().includes(q) : false) ||
-        u.department.toLowerCase().includes(q)
-    );
-  }
-
-  return { success: true, data: list, roles: initialAdminRoles };
-}
-
-/**
- * اختصاص نقش به کاربر
- */
-export async function assignRoleToUserApi(
-  userId: string,
-  roleSlug: string
-): Promise<{ success: boolean; user?: AdminUser; message?: string }> {
-  try {
-    const res = await fetch(`/api/v1/admin/users/${userId}/roles`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ roleSlug }),
-    });
-    if (res.ok) return await res.json();
-  } catch {
-    // fallback
-  }
-
-  const user = assignRoleToUser(userId, roleSlug);
-  if (!user) return { success: false, message: "کاربر یا نقش یافت نشد" };
-  return {
-    success: true,
-    user,
-    message: "نقش کاربری با موفقیت به کاربر اختصاص یافت.",
-  };
-}
-
-/**
- * حذف نقش از کاربر
- */
-export async function removeRoleFromUserApi(
-  userId: string,
-  roleSlug: string
-): Promise<{ success: boolean; user?: AdminUser; message?: string }> {
-  try {
-    const res = await fetch(`/api/v1/admin/users/${userId}/roles`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ roleSlug }),
-    });
-    if (res.ok) return await res.json();
-  } catch {
-    // fallback
-  }
-
-  const user = removeRoleFromUser(userId, roleSlug);
-  if (!user) return { success: false, message: "کاربر یافت نشد" };
-  return {
-    success: true,
-    user,
-    message: "نقش با موفقیت از کاربر سلب گردید.",
-  };
+): Promise<{ success: boolean; message: string }> {
+  return http.post<{ success: boolean; message: string }>(
+    `/admin/media-owner-requests/${encodeURIComponent(String(requestId))}/reject`,
+    {
+      body: { reason },
+    }
+  );
 }

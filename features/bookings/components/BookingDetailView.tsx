@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { toast } from "sonner";
+
 import {
   ArrowRight,
   Building2,
@@ -28,7 +28,8 @@ import PaymentSubmissionForm from "./PaymentSubmissionForm";
 import { formatToman } from "@/shared/lib/money";
 import { toPersianDigits } from "@/shared/lib/digits";
 import { formatJalali } from "@/shared/lib/dates";
-import { ApiError } from "@/shared/lib/errors";
+import { openSignedUrl } from "@/shared/lib/open-signed-url";
+
 import { Button } from "@/shared/components/ui/button";
 
 interface BookingDetailViewProps {
@@ -86,48 +87,12 @@ export default function BookingDetailView({
    */
   const handleDownload = async (documentId: number | string) => {
     if (downloadingDocId) return;
-
-    let newTab: Window | null = null;
-    try {
-      newTab = window.open("about:blank", "_blank");
-    } catch {
-      newTab = null;
-    }
-
     setDownloadingDocId(documentId);
-
     try {
-      const res = await downloadMutation.mutateAsync(documentId);
-
-      if (res?.download_url) {
-        if (newTab && !newTab.closed) {
-          newTab.opener = null;
-          newTab.location.href = res.download_url;
-        } else {
-          toast.info("لینک دانلود امن آماده شد", {
-            action: {
-              label: "باز کردن لینک",
-              onClick: () => {
-                window.open(res.download_url, "_blank", "noopener,noreferrer");
-              },
-            },
-          });
-        }
-      } else {
-        newTab?.close();
-        toast.error("دسترسی به این مدرک ممکن نیست");
-      }
-    } catch (err: unknown) {
-      newTab?.close();
-      if (err instanceof ApiError) {
-        if (err.status === 403 || err.status === 404) {
-          toast.error("دسترسی به این مدرک ممکن نیست");
-          return;
-        }
-        toast.error(err.message || "خطا در دریافت لینک دانلود");
-        return;
-      }
-      toast.error("دسترسی به این مدرک ممکن نیست");
+      await openSignedUrl(
+        () => downloadMutation.mutateAsync(documentId),
+        { errorMessage: "دسترسی به این مدرک ممکن نیست" }
+      );
     } finally {
       setDownloadingDocId(null);
     }

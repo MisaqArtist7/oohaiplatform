@@ -357,7 +357,7 @@ export default function AdminMediaOwnerRequestsView() {
                         className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-700 hover:bg-slate-50"
                       >
                         <FileText className="h-3.5 w-3.5 text-indigo-600" />
-                        <span>مشاهده ({req.documents.length})</span>
+                        <span>مشاهده ({req.documents?.length || 0})</span>
                       </button>
                     </td>
 
@@ -462,7 +462,7 @@ export default function AdminMediaOwnerRequestsView() {
               </h4>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {selectedRequest.documents.map((doc) => (
+                {(selectedRequest.documents || []).map((doc) => (
                   <div
                     key={doc.id}
                     className="flex items-center justify-between rounded-xl border border-slate-200 p-3 hover:bg-slate-50"
